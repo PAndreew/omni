@@ -10,27 +10,26 @@ const SCOPES = 'user-read-playback-state user-modify-playback-state';
 // In-memory CSRF state store (expires after 10 min)
 const pendingStates = new Set();
 
-function getClientId() {
-  return db.prepare("SELECT value FROM settings WHERE key='spotify_client_id'").get()?.value;
-}
-
 function getClientCreds() {
   const clientId = db.prepare("SELECT value FROM settings WHERE key='spotify_client_id'").get()?.value;
   const clientSecret = db.prepare("SELECT value FROM settings WHERE key='spotify_client_secret'").get()?.value;
   return { clientId, clientSecret };
 }
 
-function getRedirectUri(req) {
-  return `${req.protocol}://${req.get('host')}/api/spotify/callback`;
+function getRedirectUri() {
+  return db.prepare("SELECT value FROM settings WHERE key='spotify_redirect_uri'").get()?.value || '';
 }
 
 // ── Step 1: start OAuth flow ──────────────────────────────────────────────
 router.get('/auth', (req, res) => {
-  const clientId = getClientId();
+  const { clientId } = getClientCreds();
+  const redirectUri = getRedirectUri();
+
   if (!clientId) {
-    return res.status(400).send(
-      '<h2>Spotify Client ID not set</h2><p>Go to Settings → Spotify, enter your Client ID and Secret, save, then try again.</p>'
-    );
+    return res.status(400).send('<h2>Spotify Client ID not set</h2><p>Go to Settings → Spotify, save credentials first.</p>');
+  }
+  if (!redirectUri) {
+    return res.status(400).send('<h2>Redirect URI not set</h2><p>Go to Settings → Spotify and set the Redirect URI.</p>');
   }
 
   const state = crypto.randomBytes(16).toString('hex');
@@ -40,7 +39,7 @@ router.get('/auth', (req, res) => {
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: 'code',
-    redirect_uri: getRedirectUri(req),
+    redirect_uri: redirectUri,
     scope: SCOPES,
     state,
   });
@@ -75,7 +74,7 @@ router.get('/callback', async (req, res) => {
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code,
-        redirect_uri: getRedirectUri(req),
+        redirect_uri: getRedirectUri(),
       }),
     });
 

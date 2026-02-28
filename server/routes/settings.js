@@ -9,7 +9,7 @@ router.get('/', (req, res) => {
   if (settings.admin_password) settings.admin_password = '***';
   // Expose only whether a refresh token is saved, not the value
   settings.spotify_connected = !!settings.spotify_refresh_token;
-  if (settings.spotify_refresh_token) delete settings.spotify_refresh_token;
+  delete settings.spotify_refresh_token;
   res.json(settings);
 });
 
@@ -17,7 +17,7 @@ router.patch('/', (req, res) => {
   const allowed = [
     'weather_lat', 'weather_lon', 'weather_city',
     'ical_url', 'tts_voice', 'tts_rate', 'tts_pitch',
-    'spotify_refresh_token', 'spotify_client_id', 'spotify_client_secret'
+    'spotify_refresh_token', 'spotify_client_id', 'spotify_client_secret', 'spotify_redirect_uri'
   ];
   const stmt = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
   for (const [key, value] of Object.entries(req.body)) {

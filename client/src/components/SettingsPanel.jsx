@@ -20,7 +20,7 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
   const [weatherSaved, setWeatherSaved] = useState(false);
 
   // Spotify settings
-  const [spotify, setSpotify] = useState({ clientId: '', clientSecret: '' });
+  const [spotify, setSpotify] = useState({ clientId: '', clientSecret: '', redirectUri: '' });
   const [spotifyConnected, setSpotifyConnected] = useState(false);
   const [spotifySaved, setSpotifySaved] = useState(false);
 
@@ -34,7 +34,7 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
       .then(r => r.json())
       .then(s => {
         setWeather({ lat: s.weather_lat, lon: s.weather_lon, city: s.weather_city });
-        setSpotify({ clientId: s.spotify_client_id || '', clientSecret: s.spotify_client_secret || '' });
+        setSpotify({ clientId: s.spotify_client_id || '', clientSecret: s.spotify_client_secret || '', redirectUri: s.spotify_redirect_uri || '' });
         setSpotifyConnected(!!s.spotify_connected);
       });
   }, [open]);
@@ -91,7 +91,7 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
     await fetch('/api/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ spotify_client_id: spotify.clientId, spotify_client_secret: spotify.clientSecret }),
+      body: JSON.stringify({ spotify_client_id: spotify.clientId, spotify_client_secret: spotify.clientSecret, spotify_redirect_uri: spotify.redirectUri }),
     });
     setSpotifySaved(true);
     setTimeout(() => setSpotifySaved(false), 2000);
@@ -304,6 +304,12 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
                 <input className="input" type="password" value={spotify.clientSecret}
                   onChange={e => setSpotify(s => ({ ...s, clientSecret: e.target.value }))} placeholder="Client Secret" />
               </div>
+              <div>
+                <p className="label" style={{ marginBottom: 4 }}>Redirect URI <span style={{ color: 'var(--text-muted)', textTransform: 'none', fontWeight: 400 }}>(must match Spotify dashboard exactly)</span></p>
+                <input className="input" value={spotify.redirectUri}
+                  onChange={e => setSpotify(s => ({ ...s, redirectUri: e.target.value }))}
+                  placeholder="http://192.168.0.141:3001/api/spotify/callback" />
+              </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn primary" style={{ flex: 1 }} onClick={saveSpotify}>
                   {spotifySaved ? '✓ Saved' : 'Save credentials'}
@@ -314,13 +320,6 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
                   {spotifyConnected ? '↻ Reconnect' : '🎵 Connect Spotify'}
                 </a>
               </div>
-              <details style={{ marginTop: 4 }}>
-                <summary style={{ fontSize: 11, color: 'var(--text-dim)', cursor: 'pointer' }}>Redirect URI (add to Spotify app dashboard) ›</summary>
-                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 8, background: 'var(--surface-2)',
-                              padding: '10px 12px', borderRadius: 8, fontFamily: 'monospace', lineHeight: 2 }}>
-                  {window.location.origin}/api/spotify/callback
-                </div>
-              </details>
             </div>
           </div>
         )}
