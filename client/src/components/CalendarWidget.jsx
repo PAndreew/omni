@@ -37,7 +37,7 @@ export default function CalendarWidget({ focused }) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="btn" style={{ padding: '4px 10px' }}
             onClick={() => setMonth(m => new Date(m.getFullYear(), m.getMonth() - 1))}>‹</button>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{format(month, 'MMM yyyy')}</span>
+          <span className="cal-month-label">{format(month, 'MMM yyyy')}</span>
           <button className="btn" style={{ padding: '4px 10px' }}
             onClick={() => setMonth(m => new Date(m.getFullYear(), m.getMonth() + 1))}>›</button>
         </div>
@@ -71,8 +71,8 @@ export default function CalendarWidget({ focused }) {
           {todayEvents.map(ev => (
             <div key={ev.id} className="glass cal-event">
               <span className="cal-event-dot" style={{ background: ev.color || 'var(--cyan)' }} />
-              <span style={{ fontSize: 12 }}>{ev.title}</span>
-              <span style={{ fontSize: 11, color: 'var(--text-dim)', marginLeft: 'auto' }}>
+              <span className="cal-event-title">{ev.title}</span>
+              <span className="cal-event-time">
                 {ev.start_time.includes('T') ? format(parseISO(ev.start_time), 'h:mm a') : 'All day'}
               </span>
             </div>
@@ -84,10 +84,10 @@ export default function CalendarWidget({ focused }) {
         .cal-tile { display: flex; flex-direction: column; gap: 12px; }
         .cal-header { display: flex; justify-content: space-between; align-items: center; }
         .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-        .cal-dow  { text-align: center; font-size: 9px; letter-spacing: 0.1em; color: var(--text-dim);
+        .cal-dow  { text-align: center; font-size: 11px; letter-spacing: 0.08em; color: var(--text-dim);
                     text-transform: uppercase; padding: 4px 0; }
         .cal-day  { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center;
-                    justify-content: center; border-radius: 6px; font-size: 11px;
+                    justify-content: center; border-radius: 6px; font-size: 13px;
                     font-family: 'Roboto Mono', monospace; cursor: default; position: relative;
                     color: var(--text-dim); transition: background 0.15s; }
         .cal-day.today { background: rgba(0,212,255,0.12); color: var(--cyan); font-weight: 700; }
@@ -95,8 +95,19 @@ export default function CalendarWidget({ focused }) {
         .cal-dots { display: flex; gap: 2px; margin-top: 2px; }
         .cal-dot  { width: 4px; height: 4px; border-radius: 50%; }
         .cal-today-events { display: flex; flex-direction: column; gap: 4px; }
-        .cal-event { display: flex; align-items: center; gap: 8px; padding: 7px 10px; }
+        .cal-event { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
         .cal-event-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+        .cal-event-title { font-size: 13px; }
+        .cal-event-time  { font-size: 12px; color: var(--text-dim); margin-left: auto; }
+        .cal-month-label { font-size: 14px; font-weight: 600; }
+        @media (max-width: 768px) {
+          .cal-dow  { font-size: 12px; }
+          .cal-day  { font-size: 15px; }
+          .cal-dot  { width: 5px; height: 5px; }
+          .cal-event-title { font-size: 14px; }
+          .cal-event-time  { font-size: 13px; }
+          .cal-month-label { font-size: 16px; }
+        }
       `}</style>
     </div>
   );

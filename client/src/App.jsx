@@ -177,6 +177,8 @@ export default function App() {
             flex-direction: column;
             height: auto;
             width: 100%;
+            max-width: 100vw;
+            overflow-x: hidden;
             gap: 10px;
             padding: 10px;
           }

@@ -36,7 +36,8 @@ html, body, #root {
   html, body, #root {
     height: auto;
     min-height: 100%;
-    overflow: auto;
+    overflow-x: hidden;   /* kill horizontal scroll/drag */
+    overflow-y: auto;
   }
 }
 
