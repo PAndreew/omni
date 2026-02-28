@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSocket } from '../hooks/useSocket.js';
+import CecKeyboard from './CecKeyboard.jsx';
 
 export default function ChoreList({ focused }) {
   const [chores, setChores] = useState([]);
   const [newChore, setNewChore] = useState('');
   const [pulsingId, setPulsingId] = useState(null);
   const [debug, setDebug] = useState('');
+  const [showKeyboard, setShowKeyboard] = useState(false);
 
   const loadChores = useCallback(() => {
     fetch('/api/chores')
@@ -17,6 +19,9 @@ export default function ChoreList({ focused }) {
   useEffect(() => {
     loadChores();
   }, [loadChores]);
+
+  // CEC: OK on focused Chores tile → open keyboard to add a chore
+  useSocket('cec:select', () => { if (focused && !showKeyboard) setShowKeyboard(true); });
 
   useSocket('chore:added',   (c) => setChores(prev => prev.some(x => x.id === c.id) ? prev : [c, ...prev]));
   useSocket('chore:updated', (c) => setChores(prev => prev.map(x => x.id === c.id ? c : x)));
@@ -32,8 +37,8 @@ export default function ChoreList({ focused }) {
     }
   }, []);
 
-  const addChore = useCallback(async () => {
-    const title = newChore.trim();
+  const addChore = useCallback(async (titleArg) => {
+    const title = (titleArg ?? newChore).trim();
     if (!title) { setDebug('Type a chore first'); setTimeout(() => setDebug(''), 2000); return; }
     setDebug('Adding...');
     try {
@@ -71,6 +76,12 @@ export default function ChoreList({ focused }) {
 
   return (
     <div className={`tile chore-tile ${focused ? 'focused' : ''}`}>
+      <CecKeyboard
+        visible={showKeyboard}
+        placeholder="Add a chore…"
+        onSubmit={(text) => { setShowKeyboard(false); addChore(text); }}
+        onClose={() => setShowKeyboard(false)}
+      />
       <div className="chore-header">
         <p className="title">Chores <span style={{ color: 'var(--silver-light)', fontVariantNumeric: 'tabular-nums' }}>{pending.length}</span></p>
         {debug && <span className="chore-status">{debug}</span>}

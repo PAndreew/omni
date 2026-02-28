@@ -62,8 +62,20 @@ export function startCEC(socketIo) {
   const proc = spawn(
     'cec-client',
     [CEC_ADAPTER, '-t', 'p', '-d', '1'],
-    { stdio: ['ignore', 'pipe', 'pipe'] },   // pipe both stdout and stderr
+    { stdio: ['ignore', 'pipe', 'pipe'] },
   );
+
+  // Send active-source announcement via a separate one-shot cec-client call.
+  // This tells the TV the Pi is the active source, re-establishing CEC after
+  // any HDMI interruption or kiosk restart.
+  setTimeout(() => {
+    try {
+      const ann = spawn('cec-client', [CEC_ADAPTER, '-s', '-d', '1'], { stdio: ['pipe', 'ignore', 'ignore'] });
+      ann.stdin.write('as\n');
+      ann.stdin.end();
+      console.log('[CEC] Sent active-source announcement');
+    } catch {}
+  }, 4000);
 
   const handleChunk = (chunk) => {
     const lines = chunk.toString().split('\n');

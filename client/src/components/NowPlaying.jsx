@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Search, X, Play, Music, SkipBack, SkipForward, Pause } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket.js';
+import CecKeyboard from './CecKeyboard.jsx';
 
 const PrevIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
@@ -19,12 +20,28 @@ export default function NowPlaying({ focused }) {
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showSearch, setShowSearch] = useState(false);
+  const [showKeyboard, setShowKeyboard] = useState(false);
+  const [resultIdx, setResultIdx] = useState(0);
 
   useEffect(() => {
     fetch('/api/audio/current').then(r => r.json()).then(t => { if (t) setTrack(t); }).catch(() => {});
   }, []);
 
   useSocket('audio:track', setTrack);
+
+  // CEC: OK on focused tile — open keyboard or play highlighted result
+  useSocket('cec:select', () => {
+    if (!focused) return;
+    if (showSearch && !showKeyboard && searchResults.length) {
+      playTrack(searchResults[resultIdx].uri);
+    } else if (!showSearch && !showKeyboard) {
+      setShowKeyboard(true);
+    }
+  });
+
+  // CEC: navigate search results while keyboard is closed
+  useSocket('cec:up',   () => { if (focused && showSearch && !showKeyboard && searchResults.length) setResultIdx(i => Math.max(0, i - 1)); });
+  useSocket('cec:down', () => { if (focused && showSearch && !showKeyboard && searchResults.length) setResultIdx(i => Math.min(searchResults.length - 1, i + 1)); });
 
   const command = (cmd) => fetch(`/api/audio/${cmd}`, { method: 'POST' });
 
@@ -33,6 +50,7 @@ export default function NowPlaying({ focused }) {
     const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(q)}`);
     const data = await res.json();
     setSearchResults(data);
+    setResultIdx(0);
   }, []);
 
   const playTrack = async (uri) => {
@@ -44,12 +62,19 @@ export default function NowPlaying({ focused }) {
     setShowSearch(false);
     setSearch('');
     setSearchResults([]);
+    setResultIdx(0);
   };
 
   const isPlaying = track?.status === 'playing';
 
   return (
     <div className={`tile nowplaying-tile ${focused ? 'focused' : ''}`}>
+      <CecKeyboard
+        visible={showKeyboard}
+        placeholder="Search Spotify…"
+        onSubmit={(q) => { setShowKeyboard(false); setShowSearch(true); setSearch(q); doSearch(q); }}
+        onClose={() => setShowKeyboard(false)}
+      />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <p className="title" style={{ margin: 0 }}>Now Playing</p>
         <button onClick={() => setShowSearch(!showSearch)}
@@ -71,8 +96,8 @@ export default function NowPlaying({ focused }) {
             onChange={e => { setSearch(e.target.value); doSearch(e.target.value); }}
           />
           <div className="np-search-results">
-            {searchResults.map(t => (
-              <div key={t.id} className="glass np-search-item" onClick={() => playTrack(t.uri)}>
+            {searchResults.map((t, i) => (
+              <div key={t.id} className={`glass np-search-item${i === resultIdx && focused ? ' cec-active' : ''}`} onClick={() => playTrack(t.uri)}>
                 <img src={t.album.images[2]?.url} alt="art" style={{ width: 32, height: 32, borderRadius: 4 }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
@@ -149,7 +174,8 @@ export default function NowPlaying({ focused }) {
         .np-search-container { flex: 1; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
         .np-search-results { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
         .np-search-item { display: flex; align-items: center; gap: 10px; padding: 6px 10px; cursor: pointer; transition: all 0.2s; border-radius: 8px; }
-        .np-search-item:hover { background: var(--surface-2); border-color: var(--cyan); }
+        .np-search-item:hover { background: var(--surface-2); border-color: var(--silver); }
+        .np-search-item.cec-active { background: var(--surface-2); border-color: var(--silver-light); }
       `}</style>
     </div>
   );

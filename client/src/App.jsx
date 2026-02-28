@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Settings } from 'lucide-react';
+import { useCecKeyboardOpen } from './hooks/useCecKeyboard.js';
 import Clock from './components/Clock.jsx';
 import Weather from './components/Weather.jsx';
 import ChoreList from './components/ChoreList.jsx';
@@ -14,6 +15,7 @@ const TILES = ['clock', 'weather', 'nowplaying', 'chores', 'calendar', 'voice'];
 
 export default function App() {
   const [focusIdx, setFocusIdx]       = useState(0);
+  const cecKeyboardOpen               = useCecKeyboardOpen();
   const [adminMode, setAdminMode]     = useState(false);
   const [adminPwd, setAdminPwd]       = useState('');
   const [showLogin, setShowLogin]     = useState(false);
@@ -52,12 +54,13 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [navigate]);
 
-  useSocket('cec:right',  () => navigate('right'));
-  useSocket('cec:left',   () => navigate('left'));
-  useSocket('cec:down',   () => navigate('down'));
-  useSocket('cec:up',     () => navigate('up'));
+  useSocket('cec:right',  () => { if (!cecKeyboardOpen) navigate('right'); });
+  useSocket('cec:left',   () => { if (!cecKeyboardOpen) navigate('left'); });
+  useSocket('cec:down',   () => { if (!cecKeyboardOpen) navigate('down'); });
+  useSocket('cec:up',     () => { if (!cecKeyboardOpen) navigate('up'); });
   useSocket('cec:select', () => {
-    document.querySelector(`[data-tile="${TILES[focusIdx]}"]`)?.click();
+    if (!cecKeyboardOpen)
+      document.querySelector(`[data-tile="${TILES[focusIdx]}"]`)?.click();
   });
 
   const login = async () => {
