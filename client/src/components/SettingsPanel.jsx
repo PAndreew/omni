@@ -2,8 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 
 const COLORS = ['#00d4ff', '#ff00aa', '#ffd700', '#00ff88', '#a855f7', '#f97316'];
 
-export default function SettingsPanel({ open, onClose }) {
+export default function SettingsPanel({ open, onClose, initialTab }) {
   const [tab, setTab] = useState('calendars');
+
+  useEffect(() => {
+    if (open && initialTab) setTab(initialTab);
+  }, [open, initialTab]);
   const [calendars, setCalendars] = useState([]);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState(null);
@@ -16,7 +20,8 @@ export default function SettingsPanel({ open, onClose }) {
   const [weatherSaved, setWeatherSaved] = useState(false);
 
   // Spotify settings
-  const [spotify, setSpotify] = useState({ clientId: '', clientSecret: '', refreshToken: '' });
+  const [spotify, setSpotify] = useState({ clientId: '', clientSecret: '' });
+  const [spotifyConnected, setSpotifyConnected] = useState(false);
   const [spotifySaved, setSpotifySaved] = useState(false);
 
   // Admin password change
@@ -29,11 +34,8 @@ export default function SettingsPanel({ open, onClose }) {
       .then(r => r.json())
       .then(s => {
         setWeather({ lat: s.weather_lat, lon: s.weather_lon, city: s.weather_city });
-        setSpotify({
-          clientId: s.spotify_client_id || '',
-          clientSecret: s.spotify_client_secret || '',
-          refreshToken: s.spotify_refresh_token || ''
-        });
+        setSpotify({ clientId: s.spotify_client_id || '', clientSecret: s.spotify_client_secret || '' });
+        setSpotifyConnected(!!s.spotify_connected);
       });
   }, [open]);
 
@@ -89,14 +91,19 @@ export default function SettingsPanel({ open, onClose }) {
     await fetch('/api/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        spotify_client_id: spotify.clientId,
-        spotify_client_secret: spotify.clientSecret,
-        spotify_refresh_token: spotify.refreshToken
-      }),
+      body: JSON.stringify({ spotify_client_id: spotify.clientId, spotify_client_secret: spotify.clientSecret }),
     });
     setSpotifySaved(true);
     setTimeout(() => setSpotifySaved(false), 2000);
+  };
+
+  const disconnectSpotify = async () => {
+    await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ spotify_refresh_token: '' }),
+    });
+    setSpotifyConnected(false);
   };
 
   const changePassword = async () => {
@@ -267,8 +274,25 @@ export default function SettingsPanel({ open, onClose }) {
         {tab === 'spotify' && (
           <div className="sp-body">
             <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 16, lineHeight: 1.6 }}>
-              Enable cloud control and search. Register an app at <strong style={{ color: 'var(--text)' }}>developer.spotify.com</strong> to get your credentials.
+              Register an app at <strong style={{ color: 'var(--text)' }}>developer.spotify.com</strong>, paste your credentials below, save, then click Connect.
             </p>
+
+            {/* Connection status */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 10,
+                          background: spotifyConnected ? 'rgba(0,255,136,0.08)' : 'var(--surface-2)',
+                          border: `1px solid ${spotifyConnected ? 'var(--green)' : 'var(--border)'}`,
+                          marginBottom: 18 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                             background: spotifyConnected ? 'var(--green)' : 'var(--text-muted)' }} />
+              <span style={{ fontSize: 13, fontWeight: 600, flex: 1 }}>
+                {spotifyConnected ? 'Connected' : 'Not connected'}
+              </span>
+              {spotifyConnected && (
+                <button className="btn" style={{ fontSize: 11, padding: '3px 10px', color: 'var(--magenta)' }}
+                  onClick={disconnectSpotify}>Disconnect</button>
+              )}
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div>
                 <p className="label" style={{ marginBottom: 4 }}>Client ID</p>
@@ -280,17 +304,23 @@ export default function SettingsPanel({ open, onClose }) {
                 <input className="input" type="password" value={spotify.clientSecret}
                   onChange={e => setSpotify(s => ({ ...s, clientSecret: e.target.value }))} placeholder="Client Secret" />
               </div>
-              <div>
-                <p className="label" style={{ marginBottom: 4 }}>Refresh Token</p>
-                <input className="input" type="password" value={spotify.refreshToken}
-                  onChange={e => setSpotify(s => ({ ...s, refreshToken: e.target.value }))} placeholder="Refresh Token" />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn primary" style={{ flex: 1 }} onClick={saveSpotify}>
+                  {spotifySaved ? '✓ Saved' : 'Save credentials'}
+                </button>
+                <a href="/api/spotify/auth" className="btn" style={{ flex: 1, textAlign: 'center', textDecoration: 'none',
+                    background: 'linear-gradient(135deg,rgba(30,215,96,.15),rgba(30,215,96,.05))',
+                    borderColor: '#1ed760', color: '#1ed760' }}>
+                  {spotifyConnected ? '↻ Reconnect' : '🎵 Connect Spotify'}
+                </a>
               </div>
-              <button className="btn primary" onClick={saveSpotify}>
-                {spotifySaved ? '✓ Saved' : 'Save Spotify Settings'}
-              </button>
-              <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 8 }}>
-                * Redirect URI: http://localhost:3001/callback (optional)
-              </p>
+              <details style={{ marginTop: 4 }}>
+                <summary style={{ fontSize: 11, color: 'var(--text-dim)', cursor: 'pointer' }}>Redirect URI (add to Spotify app dashboard) ›</summary>
+                <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 8, background: 'var(--surface-2)',
+                              padding: '10px 12px', borderRadius: 8, fontFamily: 'monospace', lineHeight: 2 }}>
+                  {window.location.origin}/api/spotify/callback
+                </div>
+              </details>
             </div>
           </div>
         )}

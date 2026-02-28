@@ -6,8 +6,10 @@ const router = Router();
 router.get('/', (req, res) => {
   const rows = db.prepare('SELECT key, value FROM settings').all();
   const settings = Object.fromEntries(rows.map(r => [r.key, r.value]));
-  // Redact password
   if (settings.admin_password) settings.admin_password = '***';
+  // Expose only whether a refresh token is saved, not the value
+  settings.spotify_connected = !!settings.spotify_refresh_token;
+  if (settings.spotify_refresh_token) delete settings.spotify_refresh_token;
   res.json(settings);
 });
 

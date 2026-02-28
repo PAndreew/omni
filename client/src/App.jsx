@@ -18,6 +18,18 @@ export default function App() {
   const [adminPwd, setAdminPwd]       = useState('');
   const [showLogin, setShowLogin]     = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [spotifyTab, setSpotifyTab]     = useState(false);
+
+  // Open settings on Spotify OAuth callback redirect
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('spotify') === 'connected') {
+      setAdminMode(true);
+      setShowSettings(true);
+      setSpotifyTab(true);
+      window.history.replaceState({}, '', '/');
+    }
+  }, []);
 
   // D-pad / CEC navigation
   const navigate = useCallback((dir) => {
@@ -123,7 +135,8 @@ export default function App() {
         </div>
       )}
 
-      <SettingsPanel open={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsPanel open={showSettings} onClose={() => { setShowSettings(false); setSpotifyTab(false); }}
+                     initialTab={spotifyTab ? 'spotify' : null} />
       <NotificationManager />
 
       <style>{`
