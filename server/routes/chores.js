@@ -4,11 +4,13 @@ import db from '../db.js';
 const router = Router();
 
 router.get('/', (req, res) => {
+  console.log('[CHORES] GET chores');
   const chores = db.prepare('SELECT * FROM chores ORDER BY done ASC, created_at DESC').all();
   res.json(chores);
 });
 
 router.post('/', (req, res) => {
+  console.log('[CHORES] POST request body:', JSON.stringify(req.body));
   const { title, assignee = '', due_date = null } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: 'Title required' });
   const result = db.prepare('INSERT INTO chores (title, assignee, due_date) VALUES (?, ?, ?)').run(title.trim(), assignee, due_date);

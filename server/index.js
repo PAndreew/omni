@@ -29,6 +29,16 @@ const io = new SocketIO(httpServer, {
 app.use(cors());
 app.use(express.json());
 
+// Request logger
+app.use((req, res, next) => {
+  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
+  if (req.method !== 'GET') {
+    console.log('  Headers:', JSON.stringify(req.headers));
+    console.log('  Body:', JSON.stringify(req.body));
+  }
+  next();
+});
+
 // Attach io to every request so routes can emit events
 app.use((req, _res, next) => { req.io = io; next(); });
 
