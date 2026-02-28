@@ -15,6 +15,10 @@ export default function SettingsPanel({ open, onClose }) {
   const [weather, setWeather] = useState({ lat: '', lon: '', city: '' });
   const [weatherSaved, setWeatherSaved] = useState(false);
 
+  // Spotify settings
+  const [spotify, setSpotify] = useState({ clientId: '', clientSecret: '', refreshToken: '' });
+  const [spotifySaved, setSpotifySaved] = useState(false);
+
   // Admin password change
   const [pwd, setPwd] = useState({ current: '', next: '', confirm: '' });
 
@@ -23,7 +27,14 @@ export default function SettingsPanel({ open, onClose }) {
     fetchCalendars();
     fetch('/api/settings')
       .then(r => r.json())
-      .then(s => setWeather({ lat: s.weather_lat, lon: s.weather_lon, city: s.weather_city }));
+      .then(s => {
+        setWeather({ lat: s.weather_lat, lon: s.weather_lon, city: s.weather_city });
+        setSpotify({
+          clientId: s.spotify_client_id || '',
+          clientSecret: s.spotify_client_secret || '',
+          refreshToken: s.spotify_refresh_token || ''
+        });
+      });
   }, [open]);
 
   const fetchCalendars = () =>
@@ -74,6 +85,20 @@ export default function SettingsPanel({ open, onClose }) {
     setTimeout(() => setWeatherSaved(false), 2000);
   };
 
+  const saveSpotify = async () => {
+    await fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        spotify_client_id: spotify.clientId,
+        spotify_client_secret: spotify.clientSecret,
+        spotify_refresh_token: spotify.refreshToken
+      }),
+    });
+    setSpotifySaved(true);
+    setTimeout(() => setSpotifySaved(false), 2000);
+  };
+
   const changePassword = async () => {
     if (pwd.next !== pwd.confirm) return alert('Passwords do not match');
     const res = await fetch('/api/settings/auth', {
@@ -107,9 +132,9 @@ export default function SettingsPanel({ open, onClose }) {
 
         {/* Tabs */}
         <div className="sp-tabs">
-          {['calendars', 'weather', 'security'].map(t => (
+          {['calendars', 'weather', 'spotify', 'security'].map(t => (
             <button key={t} className={`sp-tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-              {t === 'calendars' ? '📅 Calendars' : t === 'weather' ? '🌤 Weather' : '🔐 Security'}
+              {t === 'calendars' ? '📅 Calendars' : t === 'weather' ? '🌤 Weather' : t === 'spotify' ? '🎵 Spotify' : '🔐 Security'}
             </button>
           ))}
         </div>
@@ -234,6 +259,38 @@ export default function SettingsPanel({ open, onClose }) {
               <button className="btn primary" onClick={saveWeather}>
                 {weatherSaved ? '✓ Saved' : 'Save location'}
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* ─── Spotify tab ──────────────────────────────────────── */}
+        {tab === 'spotify' && (
+          <div className="sp-body">
+            <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 16, lineHeight: 1.6 }}>
+              Enable cloud control and search. Register an app at <strong style={{ color: 'var(--text)' }}>developer.spotify.com</strong> to get your credentials.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                <p className="label" style={{ marginBottom: 4 }}>Client ID</p>
+                <input className="input" value={spotify.clientId}
+                  onChange={e => setSpotify(s => ({ ...s, clientId: e.target.value }))} placeholder="Client ID" />
+              </div>
+              <div>
+                <p className="label" style={{ marginBottom: 4 }}>Client Secret</p>
+                <input className="input" type="password" value={spotify.clientSecret}
+                  onChange={e => setSpotify(s => ({ ...s, clientSecret: e.target.value }))} placeholder="Client Secret" />
+              </div>
+              <div>
+                <p className="label" style={{ marginBottom: 4 }}>Refresh Token</p>
+                <input className="input" type="password" value={spotify.refreshToken}
+                  onChange={e => setSpotify(s => ({ ...s, refreshToken: e.target.value }))} placeholder="Refresh Token" />
+              </div>
+              <button className="btn primary" onClick={saveSpotify}>
+                {spotifySaved ? '✓ Saved' : 'Save Spotify Settings'}
+              </button>
+              <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 8 }}>
+                * Redirect URI: http://localhost:3001/callback (optional)
+              </p>
             </div>
           </div>
         )}

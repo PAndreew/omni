@@ -16,6 +16,7 @@ import { startCEC } from './services/cec.js';
 import { startAudioBridge, getCurrentTrack, sendCommand } from './services/audio.js';
 import { startScheduler } from './services/scheduler.js';
 import { startCalendarSync } from './services/calendar.js';
+import { spotifySearch, spotifyPlayTrack } from './services/spotify.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
@@ -51,11 +52,23 @@ app.use('/api/events',    eventsRouter);
 app.use('/api/calendars', calendarsRouter);
 
 // Audio control
-app.post('/api/audio/:cmd', (req, res) => {
-  sendCommand(req.params.cmd);
+app.post('/api/audio/:cmd', async (req, res) => {
+  await sendCommand(req.params.cmd);
   res.json({ ok: true });
 });
 app.get('/api/audio/current', (req, res) => res.json(getCurrentTrack()));
+
+app.get('/api/spotify/search', async (req, res) => {
+  const { q } = req.query;
+  const results = await spotifySearch(q);
+  res.json(results);
+});
+
+app.post('/api/spotify/play', async (req, res) => {
+  const { uri } = req.body;
+  const ok = await spotifyPlayTrack(uri);
+  res.json({ ok });
+});
 
 // Voice command endpoint — frontend sends parsed command text
 app.post('/api/voice/command', async (req, res) => {

@@ -7,6 +7,7 @@
 
 import { readFileSync, watch } from 'fs';
 import { execSync } from 'child_process';
+import { spotifyCommand } from './spotify.js';
 
 const NOWPLAYING_PATH = process.env.DB_PATH
   ? process.env.DB_PATH.replace('omniwall.db', 'nowplaying.json')
@@ -115,13 +116,18 @@ async function processNowPlaying() {
 
 // ─── Player control ───────────────────────────────────────────────────────────
 
-export function sendCommand(cmd) {
+export async function sendCommand(cmd) {
+  // Try Spotify API first if configured
+  const handledBySpotify = await spotifyCommand(cmd);
+  if (handledBySpotify) return;
+
   const map = {
     play:   'playerctl play',
     pause:  'playerctl pause',
     toggle: 'playerctl play-pause',
     next:   'playerctl next',
     prev:   'playerctl previous',
+    stop:   'playerctl stop',
   };
   try { if (map[cmd]) execSync(map[cmd], { stdio: 'ignore', timeout: 2000 }); } catch {}
 }

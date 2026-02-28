@@ -1,32 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { Search, X, Play, Music, SkipBack, SkipForward, Pause, Square } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket.js';
-
-const PrevIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-    <path d="M19 20L9 12L19 4V20ZM5 19H7V5H5V19Z" />
-  </svg>
-);
-
-const NextIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-    <path d="M5 4L15 12L5 20V4ZM17 5H19V19H17V5Z" />
-  </svg>
-);
-
-const PlayIcon = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-    <path d="M8 5V19L19 12L8 5Z" />
-  </svg>
-);
-
-const PauseIcon = () => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-    <path d="M6 19H10V5H6V19ZM14 5V19H18V5H14Z" />
-  </svg>
-);
 
 export default function NowPlaying({ focused }) {
   const [track, setTrack] = useState(null);
+  const [search, setSearch] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearch, setShowSearch] = useState(false);
 
   useEffect(() => {
     fetch('/api/audio/current').then(r => r.json()).then(t => { if (t) setTrack(t); }).catch(() => {});
@@ -36,20 +16,65 @@ export default function NowPlaying({ focused }) {
 
   const command = (cmd) => fetch(`/api/audio/${cmd}`, { method: 'POST' });
 
+  const doSearch = useCallback(async (q) => {
+    if (!q.trim()) return;
+    const res = await fetch(`/api/spotify/search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    setSearchResults(data);
+  }, []);
+
+  const playTrack = async (uri) => {
+    await fetch('/api/spotify/play', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uri }),
+    });
+    setShowSearch(false);
+    setSearch('');
+    setSearchResults([]);
+  };
+
   const isPlaying = track?.status === 'playing';
 
   return (
     <div className={`tile nowplaying-tile ${focused ? 'focused' : ''}`}>
-      <p className="title">Now Playing</p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <p className="title" style={{ margin: 0 }}>Now Playing</p>
+        <button className="btn" onClick={() => setShowSearch(!showSearch)} style={{ padding: '4px' }}>
+          {showSearch ? <X size={16} /> : <Search size={16} />}
+        </button>
+      </div>
 
-      {track?.title ? (
+      {showSearch ? (
+        <div className="np-search-container">
+          <input
+            className="input"
+            autoFocus
+            placeholder="Search Spotify..."
+            value={search}
+            onChange={e => { setSearch(e.target.value); doSearch(e.target.value); }}
+          />
+          <div className="np-search-results">
+            {searchResults.map(t => (
+              <div key={t.id} className="glass np-search-item" onClick={() => playTrack(t.uri)}>
+                <img src={t.album.images[2]?.url} alt="art" style={{ width: 32, height: 32, borderRadius: 4 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
+                  <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>{t.artists[0].name}</div>
+                </div>
+                <Play size={12} fill="currentColor" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : track?.title ? (
         <>
           <div className="np-art-container">
             {track.art ? (
               <img src={track.art} className="np-art" alt="album art" />
             ) : (
               <div className="np-art-placeholder">
-                <span style={{ fontSize: 40 }}>{track.source === 'tidal' ? '🌊' : '🎵'}</span>
+                <Music size={40} style={{ color: 'var(--text-muted)' }} />
               </div>
             )}
             <div className="np-art-reflection" />
@@ -63,22 +88,25 @@ export default function NowPlaying({ focused }) {
 
           <div className="np-controls">
             <button className="np-btn" onClick={() => command('prev')} aria-label="Previous">
-              <PrevIcon />
+              <SkipBack size={18} fill="currentColor" />
             </button>
             <button className="np-btn np-play" onClick={() => command('toggle')} aria-label="Play/Pause">
-              {isPlaying ? <PauseIcon /> : <PlayIcon />}
+              {isPlaying ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}
+            </button>
+            <button className="np-btn" onClick={() => command('stop')} aria-label="Stop">
+              <Square size={16} fill="currentColor" />
             </button>
             <button className="np-btn" onClick={() => command('next')} aria-label="Next">
-              <NextIcon />
+              <SkipForward size={18} fill="currentColor" />
             </button>
           </div>
         </>
       ) : (
         <div className="np-idle">
-          <div style={{ fontSize: 48, marginBottom: 8 }}>♪</div>
+          <div style={{ marginBottom: 12 }}><Music size={48} style={{ color: 'var(--text-muted)' }} /></div>
           <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>Nothing playing</div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-            Open Spotify or Tidal
+            Connect via Spotify or Tidal
           </div>
         </div>
       )}
@@ -98,13 +126,17 @@ export default function NowPlaying({ focused }) {
         .np-title  { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .np-artist { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
         .np-album  { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
-        .np-controls { display: flex; justify-content: center; align-items: center; gap: 16px; }
+        .np-controls { display: flex; justify-content: center; align-items: center; gap: 12px; }
         .np-btn  { background: none; border: 1px solid var(--border); border-radius: 50%;
-                   width: 36px; height: 36px; color: var(--text); cursor: pointer;
+                   width: 38px; height: 38px; color: var(--text); cursor: pointer;
                    display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
         .np-btn:hover { border-color: var(--cyan); color: var(--cyan); }
-        .np-play  { width: 44px; height: 44px; border-color: var(--cyan); color: var(--cyan); }
+        .np-play  { width: 46px; height: 46px; border-color: var(--cyan); color: var(--cyan); }
         .np-idle  { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .np-search-container { flex: 1; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+        .np-search-results { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+        .np-search-item { display: flex; align-items: center; gap: 10px; padding: 6px 10px; cursor: pointer; transition: all 0.2s; border-radius: 8px; }
+        .np-search-item:hover { background: var(--surface-2); border-color: var(--cyan); }
       `}</style>
     </div>
   );

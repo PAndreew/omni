@@ -12,7 +12,11 @@ router.get('/', (req, res) => {
 });
 
 router.patch('/', (req, res) => {
-  const allowed = ['weather_lat', 'weather_lon', 'weather_city', 'ical_url', 'tts_voice', 'tts_rate', 'tts_pitch'];
+  const allowed = [
+    'weather_lat', 'weather_lon', 'weather_city',
+    'ical_url', 'tts_voice', 'tts_rate', 'tts_pitch',
+    'spotify_refresh_token', 'spotify_client_id', 'spotify_client_secret'
+  ];
   const stmt = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
   for (const [key, value] of Object.entries(req.body)) {
     if (allowed.includes(key)) stmt.run(key, String(value));
