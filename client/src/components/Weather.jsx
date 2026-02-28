@@ -58,7 +58,8 @@ export default function Weather({ focused }) {
       <style>{`
         .weather-tile { display: flex; flex-direction: column; gap: 16px; }
         .weather-main { display: flex; align-items: center; gap: 20px; }
-        .weather-icon { font-size: 56px; filter: drop-shadow(0 0 12px rgba(0,212,255,0.3)); }
+        .weather-icon { font-size: 56px; filter: drop-shadow(0 0 12px rgba(0,212,255,0.3));
+                        font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif; }
         .weather-temp { font-size: clamp(36px, 4vw, 56px); font-weight: 300;
                         font-family: 'Roboto Mono', monospace; letter-spacing: -1px; }
         .weather-label { font-size: 14px; color: var(--text-dim); font-weight: 300; text-transform: uppercase; letter-spacing: 0.1em; }

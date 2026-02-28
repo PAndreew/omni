@@ -1,6 +1,30 @@
 import { useState, useEffect } from 'react';
 import { useSocket } from '../hooks/useSocket.js';
 
+const PrevIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M19 20L9 12L19 4V20ZM5 19H7V5H5V19Z" />
+  </svg>
+);
+
+const NextIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M5 4L15 12L5 20V4ZM17 5H19V19H17V5Z" />
+  </svg>
+);
+
+const PlayIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M8 5V19L19 12L8 5Z" />
+  </svg>
+);
+
+const PauseIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M6 19H10V5H6V19ZM14 5V19H18V5H14Z" />
+  </svg>
+);
+
 export default function NowPlaying({ focused }) {
   const [track, setTrack] = useState(null);
 
@@ -38,11 +62,15 @@ export default function NowPlaying({ focused }) {
           </div>
 
           <div className="np-controls">
-            <button className="np-btn" onClick={() => command('prev')} aria-label="Previous">⏮</button>
-            <button className="np-btn np-play" onClick={() => command('toggle')} aria-label="Play/Pause">
-              {isPlaying ? '⏸' : '▶'}
+            <button className="np-btn" onClick={() => command('prev')} aria-label="Previous">
+              <PrevIcon />
             </button>
-            <button className="np-btn" onClick={() => command('next')} aria-label="Next">⏭</button>
+            <button className="np-btn np-play" onClick={() => command('toggle')} aria-label="Play/Pause">
+              {isPlaying ? <PauseIcon /> : <PlayIcon />}
+            </button>
+            <button className="np-btn" onClick={() => command('next')} aria-label="Next">
+              <NextIcon />
+            </button>
           </div>
         </>
       ) : (
@@ -70,12 +98,12 @@ export default function NowPlaying({ focused }) {
         .np-title  { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .np-artist { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
         .np-album  { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
-        .np-controls { display: flex; justify-content: center; gap: 16px; }
+        .np-controls { display: flex; justify-content: center; align-items: center; gap: 16px; }
         .np-btn  { background: none; border: 1px solid var(--border); border-radius: 50%;
-                   width: 36px; height: 36px; color: var(--text); cursor: pointer; font-size: 14px;
+                   width: 36px; height: 36px; color: var(--text); cursor: pointer;
                    display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
         .np-btn:hover { border-color: var(--cyan); color: var(--cyan); }
-        .np-play  { width: 44px; height: 44px; font-size: 18px; border-color: var(--cyan); color: var(--cyan); }
+        .np-play  { width: 44px; height: 44px; border-color: var(--cyan); color: var(--cyan); }
         .np-idle  { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
       `}</style>
     </div>

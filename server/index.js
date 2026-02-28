@@ -84,7 +84,9 @@ startCalendarSync(io);
 
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🖥️  OmniWall server running at http://0.0.0.0:${PORT}`);
-  console.log(`   Frontend: http://localhost:5173 (dev) or http://localhost:${PORT} (prod)`);
+  console.log(`   Local network:  http://192.168.0.141:${PORT}`);
+  console.log(`   Tailscale IP:   http://100.64.243.93:${PORT}`);
+  console.log(`   Tailscale DNS:  http://raspberrypi.tailf0acdd.ts.net:${PORT}`);
 });
 
 // ─── Voice command processor ────────────────────────────────────────────────

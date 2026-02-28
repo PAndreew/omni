@@ -31,6 +31,11 @@ html, body, #root {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Ensure emoji glyphs render correctly on all platforms (RPi/Chromium kiosk) */
+.weather-icon, .forecast-icon, .voice-icon {
+  font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif;
+}
+
 /* ─── Scrollbars ───────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

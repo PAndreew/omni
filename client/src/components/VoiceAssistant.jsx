@@ -103,7 +103,8 @@ export default function VoiceAssistant({ focused }) {
                        display: flex; align-items: center; justify-content: center; cursor: pointer;
                        transition: all 0.3s; flex-shrink: 0; }
         .voice-btn.active { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0,212,255,0.3); }
-        .voice-icon  { font-size: 22px; z-index: 1; }
+        .voice-icon  { font-size: 22px; z-index: 1;
+                        font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif; }
       `}</style>
     </div>
   );

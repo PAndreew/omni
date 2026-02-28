@@ -57,15 +57,15 @@ db.exec(`
   );
 `);
 
-// Add new columns to events if upgrading an existing DB
+// Migration
 try { db.exec("ALTER TABLE events ADD COLUMN uid TEXT"); }      catch {}
 try { db.exec("ALTER TABLE events ADD COLUMN all_day INTEGER DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE events ADD COLUMN owner TEXT DEFAULT ''"); }     catch {}
 
 const defaults = {
-  weather_lat:    process.env.WEATHER_LAT  || '51.5074',
-  weather_lon:    process.env.WEATHER_LON  || '-0.1278',
-  weather_city:   process.env.WEATHER_CITY || 'London',
+  weather_lat:    process.env.WEATHER_LAT  || '47.4979',
+  weather_lon:    process.env.WEATHER_LON  || '19.0402',
+  weather_city:   process.env.WEATHER_CITY || 'Budapest',
   admin_password: 'omni1234',
   tts_voice:      '',
   tts_rate:       '1',
