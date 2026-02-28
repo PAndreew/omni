@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, X, Play, Music, SkipBack, SkipForward, Pause, Square } from 'lucide-react';
+import { Search, X, Play, Music, SkipBack, SkipForward, Pause } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket.js';
 
 const PrevIcon = () => (
@@ -104,9 +104,6 @@ export default function NowPlaying({ focused }) {
             </button>
             <button className="np-btn np-play" onClick={() => command('toggle')} aria-label="Play/Pause">
               {isPlaying ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}
-            </button>
-            <button className="np-btn" onClick={() => command('stop')} aria-label="Stop">
-              <Square size={16} fill="currentColor" />
             </button>
             <button className="np-btn" onClick={() => command('next')} aria-label="Next">
               <SkipForward size={18} fill="currentColor" />
