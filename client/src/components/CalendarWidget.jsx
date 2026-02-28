@@ -37,6 +37,8 @@ export default function CalendarWidget({ focused }) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="btn" style={{ padding: '4px 10px' }}
             onClick={() => setMonth(m => new Date(m.getFullYear(), m.getMonth() - 1))}>‹</button>
+          <button className="btn" style={{ padding: '4px 8px', fontSize: 11 }}
+            onClick={() => { const t = new Date(); setMonth(t); setSelectedDay(t); }}>Today</button>
           <span className="cal-month-label">{format(month, 'MMM yyyy')}</span>
           <button className="btn" style={{ padding: '4px 10px' }}
             onClick={() => setMonth(m => new Date(m.getFullYear(), m.getMonth() + 1))}>›</button>
