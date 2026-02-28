@@ -87,6 +87,10 @@ export default function Weather({ focused }) {
         .forecast-day { flex: 1; padding: 10px 8px; text-align: center; display: flex; flex-direction: column; gap: 4px; align-items: center; }
         .forecast-date { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); }
         .forecast-range { display: flex; gap: 6px; font-size: 12px; font-family: 'Roboto Mono', monospace; }
+        @media (max-width: 768px) {
+          .weather-main { gap: 14px; }
+          .weather-meta { display: none; }
+        }
       `}</style>
     </div>
   );

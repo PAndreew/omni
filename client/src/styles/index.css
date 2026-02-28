@@ -31,6 +31,15 @@ html, body, #root {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Mobile: allow scrolling */
+@media (max-width: 768px) {
+  html, body, #root {
+    height: auto;
+    min-height: 100%;
+    overflow: auto;
+  }
+}
+
 /* ─── Scrollbars ───────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -45,6 +54,10 @@ html, body, #root {
   position: relative;
   overflow: hidden;
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+@media (max-width: 768px) {
+  .tile { padding: 16px; border-radius: 20px; }
 }
 
 .tile::before {

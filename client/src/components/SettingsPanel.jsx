@@ -267,6 +267,12 @@ export default function SettingsPanel({ open, onClose }) {
           border-right: none; padding: 0;
           animation: slideFromRight 0.25s ease;
         }
+        @media (max-width: 768px) {
+          .settings-panel {
+            width: 100vw;
+            border-radius: 0;
+          }
+        }
         @keyframes slideFromRight {
           from { transform: translateX(40px); opacity: 0; }
           to   { transform: translateX(0);    opacity: 1; }

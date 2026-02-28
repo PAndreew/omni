@@ -141,6 +141,7 @@ export default function App() {
       <NotificationManager />
 
       <style>{`
+        /* ── TV layout (default) ───────────────────────────── */
         .app-grid {
           display: grid;
           grid-template-columns: 1fr 1.4fr 0.9fr;
@@ -161,7 +162,7 @@ export default function App() {
         .grid-area-calendar   { grid-area: calendar; }
         .grid-area-voice      { grid-area: voice; }
 
-        /* Full height tiles */
+        /* Full height tiles on TV */
         .grid-area-clock > *,
         .grid-area-weather > *,
         .grid-area-nowplaying > *,
@@ -169,12 +170,49 @@ export default function App() {
         .grid-area-calendar > *,
         .grid-area-voice > * { height: 100%; }
 
+        /* ── Mobile layout ─────────────────────────────────── */
+        @media (max-width: 768px) {
+          .app-grid {
+            display: flex;
+            flex-direction: column;
+            height: auto;
+            width: 100%;
+            gap: 10px;
+            padding: 10px;
+          }
+          /* tiles size to content on mobile */
+          .grid-area-clock > *,
+          .grid-area-weather > *,
+          .grid-area-nowplaying > *,
+          .grid-area-chores > *,
+          .grid-area-calendar > *,
+          .grid-area-voice > * { height: auto; }
+
+          /* clock: compact horizontal layout */
+          .clock-tile { flex-direction: row !important; align-items: center; gap: 12px; }
+          .clock-date { margin-top: 0 !important; }
+
+          /* now playing: row layout, smaller art */
+          .nowplaying-tile { flex-direction: row !important; align-items: center; }
+          .np-art-container { width: 72px !important; max-height: 72px !important;
+                              aspect-ratio: 1/1; flex-shrink: 0; }
+          .np-art-reflection { display: none; }
+          .np-info { min-width: 0; }
+
+          /* voice: hide the hint text to save space */
+          .voice-hint { display: none; }
+
+          /* chore list: cap height */
+          .chore-list { max-height: 220px; }
+        }
+
         .admin-trigger {
           position: fixed; bottom: 16px; right: 16px;
           width: 36px; height: 36px; border-radius: 50%;
           background: transparent; border: 1px solid var(--border);
           color: var(--text-muted); cursor: pointer; font-size: 14px;
           opacity: 0.3; transition: opacity 0.2s;
+          z-index: 100;
         }
         .admin-trigger:hover { opacity: 1; }
 
@@ -184,6 +222,7 @@ export default function App() {
         }
         .modal {
           padding: 28px; border-radius: var(--radius); min-width: 300px;
+          width: min(360px, calc(100vw - 32px));
         }
       `}</style>
     </>
