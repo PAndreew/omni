@@ -1,76 +1,115 @@
 /**
  * Audio metadata bridge.
  *
- * Priority order:
- *  1. Spotify local Web API (port 4070) — richest data, works with raspotify
- *  2. playerctl MPRIS — fallback for both Spotify and Tidal
- *
- * Spotify local API note: raspotify/librespot exposes a local HTTP API on
- * port 4070 that returns the currently playing track with album art URLs.
- * This does NOT require a Spotify Premium API token.
+ * Reads nowplaying.json written by librespot's --onevent handler,
+ * then enriches with metadata from Spotify's embed page.
  */
 
-import { execSync, exec } from 'child_process';
-import { promisify } from 'util';
-const execAsync = promisify(exec);
+import { readFileSync, watch } from 'fs';
+import { execSync } from 'child_process';
+
+const NOWPLAYING_PATH = process.env.DB_PATH
+  ? process.env.DB_PATH.replace('omniwall.db', 'nowplaying.json')
+  : '/home/pi/Documents/omni/server/data/nowplaying.json';
 
 let io = null;
 let currentTrack = null;
-let spotifyLocalAvailable = null; // null = unknown, true/false after first check
+let lastTrackId = null;
+let metaCache = new Map(); // trackId → metadata
 
-// ─── Spotify local API (raspotify) ───────────────────────────────────────────
+// ─── Spotify metadata via embed page ─────────────────────────────────────────
 
-async function getSpotifyLocal() {
+async function fetchSpotifyMeta(trackId) {
+  if (metaCache.has(trackId)) return metaCache.get(trackId);
   try {
-    const resp = await fetch('http://localhost:4070/remote/status.json?oauth=1&csrf=1', {
-      signal: AbortSignal.timeout(1500),
-      headers: { Origin: 'https://open.spotify.com' },
+    const res = await fetch(`https://open.spotify.com/embed/track/${trackId}`, {
+      signal: AbortSignal.timeout(5000),
+      headers: { 'User-Agent': 'Mozilla/5.0' },
     });
-    if (!resp.ok) { spotifyLocalAvailable = false; return null; }
-    const data = await resp.json();
-    spotifyLocalAvailable = true;
+    const html = await res.text();
 
-    if (!data.track) return null;
-    const t = data.track;
-    return {
-      title:   t.track_resource?.name  || '',
-      artist:  t.artist_resource?.name || '',
-      album:   t.album_resource?.name  || '',
-      art:     t.album_resource?.uri
-                 ? `https://open.spotify.com/image/${t.album_resource.uri.split(':').pop()}`
-                 : null,
-      status:  data.playing ? 'playing' : 'paused',
-      position: Math.floor((data.playing_position || 0) * 1000),
-      duration: Math.floor((t.length || 0) * 1000),
-      source:  'spotify',
-    };
+    // Extract the JSON entity data Spotify embeds in the page
+    const m = html.match(/"name":"([^"]+)","uri":"spotify:track:[^"]+","artists":\[(\{[^\]]+\})\]/);
+    let title = '', artist = '', art = '';
+
+    if (m) {
+      title = m[1];
+      const artistMatch = m[2].match(/"name":"([^"]+)"/);
+      if (artistMatch) artist = artistMatch[1];
+    }
+
+    // Album art from oEmbed (simpler, reliable)
+    const oembed = await fetch(
+      `https://open.spotify.com/oembed?url=https://open.spotify.com/track/${trackId}`,
+      { signal: AbortSignal.timeout(3000) }
+    ).then(r => r.json()).catch(() => ({}));
+
+    art = oembed.thumbnail_url || '';
+    if (!title && oembed.title) title = oembed.title;
+
+    const meta = { title, artist, art };
+    metaCache.set(trackId, meta);
+    // Cap cache size
+    if (metaCache.size > 50) metaCache.delete(metaCache.keys().next().value);
+    return meta;
   } catch {
-    spotifyLocalAvailable = false;
-    return null;
+    return { title: '', artist: '', art: '' };
   }
 }
 
-// ─── playerctl fallback ───────────────────────────────────────────────────────
+// ─── Read and process nowplaying.json ────────────────────────────────────────
 
-async function getPlayerctl(player = '--player=spotifyd,spotify,tidal,vlc') {
+async function processNowPlaying() {
+  let data;
   try {
-    const [artist, title, album, status, art, source] = await Promise.all([
-      execAsync(`playerctl ${player} metadata artist 2>/dev/null`).then(r => r.stdout.trim()).catch(() => ''),
-      execAsync(`playerctl ${player} metadata title 2>/dev/null`).then(r => r.stdout.trim()).catch(() => ''),
-      execAsync(`playerctl ${player} metadata album 2>/dev/null`).then(r => r.stdout.trim()).catch(() => ''),
-      execAsync(`playerctl ${player} status 2>/dev/null`).then(r => r.stdout.trim().toLowerCase()).catch(() => 'stopped'),
-      execAsync(`playerctl ${player} metadata mpris:artUrl 2>/dev/null`).then(r => r.stdout.trim()).catch(() => ''),
-      execAsync(`playerctl ${player} metadata --format '{{playerName}}' 2>/dev/null`).then(r => r.stdout.trim().toLowerCase()).catch(() => 'unknown'),
-    ]);
-    if (!title) return null;
-    return {
-      title, artist, album,
-      art:    art || null,
-      status: status === 'playing' ? 'playing' : 'paused',
-      source: source.includes('tidal') ? 'tidal' : 'spotify',
-    };
+    const raw = readFileSync(NOWPLAYING_PATH, 'utf8').trim();
+    if (!raw) return;
+    data = JSON.parse(raw);
   } catch {
-    return null;
+    return;
+  }
+
+  if (data.event === 'preloading') return; // ignore pre-buffer events
+
+  if (data.event === 'stopped' || data.event === 'session_disconnected') {
+    const track = null;
+    if (JSON.stringify(track) !== JSON.stringify(currentTrack)) {
+      currentTrack = track;
+      io?.emit('audio:track', track);
+    }
+    return;
+  }
+
+  const { trackId, event, positionMs, durationMs } = data;
+  if (!trackId) return;
+
+  const status = event === 'paused' ? 'paused' : 'playing';
+
+  // Fetch metadata if we have a new track
+  let meta = { title: '', artist: '', art: '' };
+  if (trackId !== lastTrackId) {
+    lastTrackId = trackId;
+    meta = await fetchSpotifyMeta(trackId);
+  } else if (currentTrack) {
+    meta = { title: currentTrack.title, artist: currentTrack.artist, art: currentTrack.art };
+  } else {
+    meta = await fetchSpotifyMeta(trackId);
+  }
+
+  const track = {
+    title:    meta.title,
+    artist:   meta.artist,
+    album:    '',
+    art:      meta.art || null,
+    status,
+    position: positionMs || 0,
+    duration: durationMs || 0,
+    source:   'spotify',
+  };
+
+  if (JSON.stringify(track) !== JSON.stringify(currentTrack)) {
+    currentTrack = track;
+    io?.emit('audio:track', track);
   }
 }
 
@@ -89,19 +128,24 @@ export function sendCommand(cmd) {
 
 export function getCurrentTrack() { return currentTrack; }
 
-// ─── Poll loop ────────────────────────────────────────────────────────────────
+// ─── Start ────────────────────────────────────────────────────────────────────
 
 export function startAudioBridge(socketIo) {
   io = socketIo;
 
-  const poll = async () => {
-    const track = (await getSpotifyLocal()) || (await getPlayerctl());
-    if (JSON.stringify(track) !== JSON.stringify(currentTrack)) {
-      currentTrack = track;
-      io.emit('audio:track', track);
-    }
-  };
+  // Initial read
+  processNowPlaying();
 
-  poll();
-  setInterval(poll, 2000);
+  // Watch for changes from librespot event handler
+  try {
+    watch(NOWPLAYING_PATH, () => {
+      setTimeout(processNowPlaying, 100); // small delay for file write to complete
+    });
+  } catch {
+    // If watch fails, fall back to polling
+    setInterval(processNowPlaying, 2000);
+  }
+
+  // Also poll every 5s as a safety net (updates position)
+  setInterval(processNowPlaying, 5000);
 }
