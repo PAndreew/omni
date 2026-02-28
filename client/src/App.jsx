@@ -112,7 +112,7 @@ export default function App() {
       {showLogin && (
         <div className="modal-backdrop" onClick={() => setShowLogin(false)}>
           <div className="modal glass" onClick={e => e.stopPropagation()}>
-            <h2 className="chromatic-text" style={{ marginBottom: 16, fontSize: 20 }}>Admin Mode</h2>
+            <h2 style={{ marginBottom: 16, fontSize: 14, fontWeight: 500, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--silver-light)' }}>Admin Mode</h2>
             <input
               className="input"
               type="password"
@@ -163,13 +163,13 @@ export default function App() {
           z-index: 10;
         }
         .sidebar-btn {
-          width: 36px; height: 36px; border-radius: 10px;
-          background: transparent; border: 1px solid var(--border);
+          width: 36px; height: 36px;
+          background: transparent; border: none;
           color: var(--text-muted); cursor: pointer;
           display: flex; align-items: center; justify-content: center;
-          transition: all 0.2s;
+          transition: color 0.2s;
         }
-        .sidebar-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+        .sidebar-btn:hover { color: var(--silver-light); }
 
         /* ── TV grid ────────────────────────────────────────── */
         .app-grid {
@@ -262,7 +262,7 @@ export default function App() {
           display: flex; align-items: center; justify-content: center; z-index: 500;
         }
         .modal {
-          padding: 28px; border-radius: var(--radius);
+          padding: 28px; border-radius: 0;
           width: min(360px, calc(100vw - 32px));
         }
       `}</style>

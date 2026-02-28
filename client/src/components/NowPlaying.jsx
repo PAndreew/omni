@@ -52,7 +52,11 @@ export default function NowPlaying({ focused }) {
     <div className={`tile nowplaying-tile ${focused ? 'focused' : ''}`}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <p className="title" style={{ margin: 0 }}>Now Playing</p>
-        <button className="btn" onClick={() => setShowSearch(!showSearch)} style={{ padding: '4px' }}>
+        <button onClick={() => setShowSearch(!showSearch)}
+          style={{ background: 'none', border: 'none', padding: '6px', color: 'var(--text-dim)',
+                   cursor: 'pointer', display: 'flex', alignItems: 'center', transition: 'color 0.2s' }}
+          onMouseEnter={e => e.currentTarget.style.color = 'var(--silver-light)'}
+          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-dim)'}>
           {showSearch ? <X size={16} /> : <Search size={16} />}
         </button>
       </div>
@@ -139,8 +143,8 @@ export default function NowPlaying({ focused }) {
         .np-btn  { background: none; border: 1px solid var(--border); border-radius: 50%;
                    width: 38px; height: 38px; color: var(--text); cursor: pointer;
                    display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-        .np-btn:hover { border-color: var(--cyan); color: var(--cyan); }
-        .np-play  { width: 46px; height: 46px; border-color: var(--cyan); color: var(--cyan); }
+        .np-btn:hover { border-color: var(--silver); color: var(--silver-light); }
+        .np-play  { width: 46px; height: 46px; border-color: var(--silver); color: var(--silver-light); }
         .np-idle  { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .np-search-container { flex: 1; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
         .np-search-results { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }

@@ -80,13 +80,13 @@ export default function Weather({ focused }) {
         .weather-tile { display: flex; flex-direction: column; gap: 16px; }
         .weather-main { display: flex; align-items: center; gap: 20px; }
         .weather-temp { font-size: clamp(36px, 4vw, 56px); font-weight: 300;
-                        font-family: 'Roboto Mono', monospace; letter-spacing: -1px; }
+                        font-family: 'Satoshi', sans-serif; letter-spacing: -1px; }
         .weather-label { font-size: 14px; color: var(--text-dim); font-weight: 300; text-transform: uppercase; letter-spacing: 0.1em; }
         .weather-meta  { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
         .weather-forecast { display: flex; gap: 8px; }
         .forecast-day { flex: 1; padding: 10px 8px; text-align: center; display: flex; flex-direction: column; gap: 4px; align-items: center; }
         .forecast-date { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); }
-        .forecast-range { display: flex; gap: 6px; font-size: 12px; font-family: 'Roboto Mono', monospace; }
+        .forecast-range { display: flex; gap: 6px; font-size: 12px; font-family: 'Satoshi', sans-serif; }
         @media (max-width: 768px) {
           .weather-main { gap: 14px; }
           .weather-meta { display: none; }

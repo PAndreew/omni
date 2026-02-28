@@ -1,24 +1,20 @@
-/* ─── OmniWall — Premium Tech Noir ──────────────────────────────────── */
+/* ─── OmniWall — Minimal Noir ────────────────────────────────────── */
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
   --void:          #000000;
-  --surface:       #0a0a0a;
+  --surface:       #090909;
   --surface-2:     #111111;
-  --border:        #222222;
-  --text:          #e8e8e8;
-  --text-dim:      #666666;
-  --text-muted:    #3a3a3a;
-  --cyan:          #00d4ff;
-  --magenta:       #ff00aa;
-  --gold:          #ffd700;
-  --green:         #00ff88;
-  --radius:        28px;
-  --radius-sm:     14px;
-  --chromatic: linear-gradient(135deg, var(--cyan), var(--magenta), var(--gold));
-  --glow-cyan:     0 0 20px rgba(0, 212, 255, 0.4);
-  --glow-magenta:  0 0 20px rgba(255, 0, 170, 0.4);
+  --border:        #1c1c1c;
+  --text:          #cccccc;
+  --text-dim:      #545454;
+  --text-muted:    #2a2a2a;
+  --silver:        #787878;
+  --silver-light:  #b0b0b0;
+  --green:         #3dba6e;
+  --radius:        0px;
+  --radius-sm:     0px;
 }
 
 html, body, #root {
@@ -29,7 +25,7 @@ html, body, #root {
   font-family: 'Inter', sans-serif;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
-  overscroll-behavior: none; /* Kill pull-to-refresh and rubber-banding */
+  overscroll-behavior: none;
 }
 
 /* Mobile: allow scrolling */
@@ -37,59 +33,54 @@ html, body, #root {
   html, body, #root {
     height: auto;
     min-height: 100%;
-    overflow-x: hidden;   /* kill horizontal scroll/drag */
+    overflow-x: hidden;
     overflow-y: auto;
-    touch-action: pan-y;   /* strict: only allow vertical panning */
+    touch-action: pan-y;
   }
 }
 
-/* ─── Scrollbars ───────────────────────────────────────────────────── */
+/* ─── Scrollbars ─────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-/* ─── Tile base ────────────────────────────────────────────────────── */
+/* ─── Tile base ──────────────────────────────────────────────────── */
 .tile {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 0;
   padding: 24px;
   position: relative;
   overflow: hidden;
-  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  transition: border-color 0.3s ease;
 }
 
-/* Ensure content is always above decorative pseudo-elements */
 .tile > * {
   position: relative;
   z-index: 1;
 }
 
 @media (max-width: 768px) {
-  .tile { padding: 16px; border-radius: 20px; }
+  .tile { padding: 16px; }
 }
 
 .tile::before {
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: var(--radius);
   padding: 1px;
-  background: var(--chromatic);
+  background: linear-gradient(135deg, #282828, #909090, #282828);
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   opacity: 0;
   transition: opacity 0.3s ease;
-  pointer-events: none; /* Allow clicks to pass through to content */
+  pointer-events: none;
 }
 
 .tile.focused::before { opacity: 1; }
-.tile.focused {
-  box-shadow: 0 0 30px rgba(0, 212, 255, 0.25), 0 0 60px rgba(255, 0, 170, 0.15);
-}
 
-/* ─── Typography ───────────────────────────────────────────────────── */
+/* ─── Typography ─────────────────────────────────────────────────── */
 .label {
   font-size: 10px;
   font-weight: 600;
@@ -99,64 +90,62 @@ html, body, #root {
 }
 
 .title {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-dim);
   margin-bottom: 16px;
 }
 
-/* ─── Chromatic pulse animation ────────────────────────────────────── */
-@keyframes chromatic-pulse {
-  0%   { box-shadow: 0 0 20px rgba(0,212,255,.6); }
-  33%  { box-shadow: 0 0 20px rgba(255,0,170,.6); }
-  66%  { box-shadow: 0 0 20px rgba(255,215,0,.6); }
-  100% { box-shadow: 0 0 20px rgba(0,212,255,.6); }
-}
-.pulse { animation: chromatic-pulse 1s ease forwards; }
-
-/* ─── Glassmorphism card ───────────────────────────────────────────── */
-.glass {
-  background: rgba(255,255,255,0.04);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: var(--radius-sm);
-}
-
-/* ─── Chromatic text ───────────────────────────────────────────────── */
+/* ─── Silver gradient text ───────────────────────────────────────── */
 .chromatic-text {
-  background: var(--chromatic);
+  background: linear-gradient(135deg, var(--silver-light), var(--text));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* ─── Buttons ──────────────────────────────────────────────────────── */
+/* ─── Silver pulse animation ─────────────────────────────────────── */
+@keyframes chromatic-pulse {
+  0%   { box-shadow: 0 0 14px rgba(180,180,180,.25); }
+  100% { box-shadow: 0 0 0   rgba(180,180,180,0); }
+}
+.pulse { animation: chromatic-pulse 0.8s ease forwards; }
+
+/* ─── Glassmorphism card ─────────────────────────────────────────── */
+.glass {
+  background: rgba(255,255,255,0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 0;
+}
+
+/* ─── Buttons ────────────────────────────────────────────────────── */
 .btn {
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
+  border-radius: 0;
+  color: var(--text-dim);
   cursor: pointer;
   font-family: inherit;
   font-size: 12px;
   padding: 8px 16px;
   transition: all 0.2s;
 }
-.btn:hover { border-color: var(--cyan); color: var(--cyan); }
+.btn:hover { border-color: var(--silver); color: var(--silver-light); }
 .btn.primary {
-  background: linear-gradient(135deg, rgba(0,212,255,.15), rgba(255,0,170,.15));
-  border-color: var(--cyan);
-  color: var(--cyan);
+  background: rgba(176,176,176,0.06);
+  border-color: var(--silver);
+  color: var(--silver-light);
 }
 
-/* ─── Input ────────────────────────────────────────────────────────── */
+/* ─── Input ──────────────────────────────────────────────────────── */
 .input {
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 0;
   color: var(--text);
   font-family: inherit;
   font-size: 13px;
@@ -165,10 +154,10 @@ html, body, #root {
   transition: border-color 0.2s;
   width: 100%;
 }
-.input:focus { border-color: var(--cyan); }
+.input:focus { border-color: var(--silver); }
 .input::placeholder { color: var(--text-muted); }
 
-/* ─── Notification toast ───────────────────────────────────────────── */
+/* ─── Notification toast ─────────────────────────────────────────── */
 .toasts {
   position: fixed;
   top: 24px;
@@ -183,13 +172,13 @@ html, body, #root {
 .toast {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   padding: 14px 18px;
   max-width: 340px;
   pointer-events: all;
   animation: slideIn 0.3s ease;
 }
-.toast.urgent { border-color: var(--magenta); }
+.toast.urgent { border-color: var(--silver-light); }
 
 @keyframes slideIn {
   from { opacity: 0; transform: translateX(20px); }
@@ -197,24 +186,24 @@ html, body, #root {
 }
 
 .toast-title {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   margin-bottom: 4px;
 }
 .toast-body { font-size: 13px; color: var(--text-dim); }
 
-/* ─── Voice status badge ───────────────────────────────────────────── */
+/* ─── Voice status badge ─────────────────────────────────────────── */
 @keyframes ripple {
-  0% { transform: scale(1); opacity: 0.6; }
+  0% { transform: scale(1); opacity: 0.4; }
   100% { transform: scale(2.5); opacity: 0; }
 }
 .voice-ripple {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  border: 2px solid var(--cyan);
+  border: 2px solid var(--silver);
   animation: ripple 1.5s ease-out infinite;
-  pointer-events: none; /* Don't block microphone button */
+  pointer-events: none;
 }

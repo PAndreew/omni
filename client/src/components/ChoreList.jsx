@@ -72,7 +72,7 @@ export default function ChoreList({ focused }) {
   return (
     <div className={`tile chore-tile ${focused ? 'focused' : ''}`}>
       <div className="chore-header">
-        <p className="title">Chores <span style={{ color: 'var(--cyan)', fontVariantNumeric: 'tabular-nums' }}>{pending.length}</span></p>
+        <p className="title">Chores <span style={{ color: 'var(--silver-light)', fontVariantNumeric: 'tabular-nums' }}>{pending.length}</span></p>
         {debug && <span className="chore-status">{debug}</span>}
       </div>
 
@@ -103,7 +103,7 @@ export default function ChoreList({ focused }) {
       <style>{`
         .chore-tile { display: flex; flex-direction: column; gap: 12px; pointer-events: auto; }
         .chore-header { display: flex; justify-content: space-between; align-items: baseline; }
-        .chore-status { font-size: 11px; color: var(--cyan); text-transform: uppercase; letter-spacing: 0.05em; }
+        .chore-status { font-size: 11px; color: var(--silver); text-transform: uppercase; letter-spacing: 0.05em; }
         .chore-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
         .chore-add  { display: flex; gap: 8px; position: relative; z-index: 10; }
         .chore-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px;
@@ -123,7 +123,7 @@ export default function ChoreList({ focused }) {
         .chore-item.done .chore-text { text-decoration: line-through; }
         .chore-delete { background: none; border: none; color: var(--text-muted); cursor: pointer;
                         font-size: 16px; padding: 4px; opacity: 0; transition: opacity 0.2s; }
-        .chore-delete:hover { color: var(--magenta); }
+        .chore-delete:hover { color: var(--silver-light); }
         @media (max-width: 768px) { .chore-delete { opacity: 0.5; } }
       `}</style>
     </div>

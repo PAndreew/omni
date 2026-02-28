@@ -96,14 +96,14 @@ export default function CalendarWidget({ focused }) {
         .cal-dow  { text-align: center; font-size: 13px; letter-spacing: 0.08em; color: var(--text-dim);
                     text-transform: uppercase; padding: 4px 0; }
         .cal-day  { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center;
-                    justify-content: center; border-radius: 6px; font-size: 16px;
-                    font-family: 'Roboto Mono', monospace; cursor: pointer; position: relative;
+                    justify-content: center; border-radius: 0; font-size: 16px;
+                    font-family: 'Satoshi', sans-serif; cursor: pointer; position: relative;
                     color: var(--text-dim); transition: background 0.15s; }
-        .cal-day:hover { background: rgba(255,255,255,0.05); }
-        .cal-day.today { background: rgba(0,212,255,0.12); color: var(--cyan); font-weight: 700; }
+        .cal-day:hover { background: rgba(255,255,255,0.04); }
+        .cal-day.today { background: rgba(176,176,176,0.07); color: var(--silver-light); font-weight: 500; }
         .cal-day.has-events { color: var(--text); }
-        .cal-day.selected { background: rgba(255,0,170,0.15); outline: 1px solid var(--magenta); }
-        .cal-day.selected.today { background: rgba(0,212,255,0.2); outline: 1px solid var(--cyan); }
+        .cal-day.selected { background: rgba(176,176,176,0.1); outline: 1px solid var(--silver); }
+        .cal-day.selected.today { background: rgba(176,176,176,0.14); outline: 1px solid var(--silver-light); }
         .cal-selected-label { font-size: 13px; font-weight: 600; letter-spacing: 0.1em;
                               text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; }
         .cal-dots { display: flex; gap: 2px; margin-top: 3px; }

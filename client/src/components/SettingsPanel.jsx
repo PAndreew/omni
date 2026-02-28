@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Calendar, Cloud, Music2, Lock, X } from 'lucide-react';
 
 const COLORS = ['#00d4ff', '#ff00aa', '#ffd700', '#00ff88', '#a855f7', '#f97316'];
 
@@ -131,17 +132,23 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
 
         {/* Header */}
         <div className="sp-header">
-          <h2 className="chromatic-text" style={{ fontSize: 18, fontWeight: 700, letterSpacing: '0.1em' }}>
-            SETTINGS
+          <h2 style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.18em', color: 'var(--silver-light)', textTransform: 'uppercase' }}>
+            Settings
           </h2>
-          <button className="btn" onClick={onClose} style={{ padding: '4px 12px' }}>✕</button>
+          <button className="btn" onClick={onClose} style={{ padding: '6px 8px', display: 'flex', alignItems: 'center' }}><X size={14} /></button>
         </div>
 
         {/* Tabs */}
         <div className="sp-tabs">
           {['calendars', 'weather', 'spotify', 'security'].map(t => (
             <button key={t} className={`sp-tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
-              {t === 'calendars' ? '📅 Calendars' : t === 'weather' ? '🌤 Weather' : t === 'spotify' ? '🎵 Spotify' : '🔐 Security'}
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                {t === 'calendars' && <Calendar size={11} />}
+                {t === 'weather'   && <Cloud size={11} />}
+                {t === 'spotify'   && <Music2 size={11} />}
+                {t === 'security'  && <Lock size={11} />}
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </span>
             </button>
           ))}
         </div>
@@ -218,7 +225,7 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
             {/* Force sync */}
             <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
               <button className="btn" onClick={syncNow} disabled={syncing}>
-                {syncing ? '⏳ Syncing…' : '↻ Sync all now'}
+                {syncing ? 'Syncing…' : 'Sync all now'}
               </button>
               {lastSync && <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>Last: {lastSync}</span>}
               <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>Auto-syncs every 15 min</span>
@@ -264,7 +271,7 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
                 </div>
               </div>
               <button className="btn primary" onClick={saveWeather}>
-                {weatherSaved ? '✓ Saved' : 'Save location'}
+                {weatherSaved ? 'Saved' : 'Save location'}
               </button>
             </div>
           </div>
@@ -312,12 +319,12 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button className="btn primary" style={{ flex: 1 }} onClick={saveSpotify}>
-                  {spotifySaved ? '✓ Saved' : 'Save credentials'}
+                  {spotifySaved ? 'Saved' : 'Save credentials'}
                 </button>
                 <a href="/api/spotify/auth" className="btn" style={{ flex: 1, textAlign: 'center', textDecoration: 'none',
-                    background: 'linear-gradient(135deg,rgba(30,215,96,.15),rgba(30,215,96,.05))',
+                    background: 'rgba(30,215,96,0.07)',
                     borderColor: '#1ed760', color: '#1ed760' }}>
-                  {spotifyConnected ? '↻ Reconnect' : '🎵 Connect Spotify'}
+                  {spotifyConnected ? 'Reconnect' : 'Connect Spotify'}
                 </a>
               </div>
             </div>
@@ -349,15 +356,12 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
         .settings-panel {
           width: min(480px, 100vw); height: 100vh; overflow-y: auto;
           display: flex; flex-direction: column;
-          border-radius: var(--radius) 0 0 var(--radius);
+          border-radius: 0;
           border-right: none; padding: 0;
           animation: slideFromRight 0.25s ease;
         }
         @media (max-width: 768px) {
-          .settings-panel {
-            width: 100vw;
-            border-radius: 0;
-          }
+          .settings-panel { width: 100vw; }
         }
         @keyframes slideFromRight {
           from { transform: translateX(40px); opacity: 0; }
@@ -365,15 +369,16 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
         }
         .sp-header { display: flex; justify-content: space-between; align-items: center;
                      padding: 24px 24px 0; }
-        .sp-tabs { display: flex; gap: 4px; padding: 16px 24px 0; border-bottom: 1px solid var(--border); }
-        .sp-tab { background: none; border: none; color: var(--text-dim); cursor: pointer;
-                  font-family: inherit; font-size: 12px; padding: 8px 12px; border-radius: 8px 8px 0 0;
-                  transition: all 0.2s; }
-        .sp-tab.active { background: var(--surface-2); color: var(--cyan); border-bottom: 2px solid var(--cyan); }
-        .sp-tab:hover:not(.active) { color: var(--text); }
+        .sp-tabs { display: flex; gap: 0; padding: 16px 24px 0; border-bottom: 1px solid var(--border); }
+        .sp-tab { background: none; border: none; border-bottom: 2px solid transparent;
+                  color: var(--text-dim); cursor: pointer;
+                  font-family: inherit; font-size: 11px; letter-spacing: 0.06em;
+                  padding: 8px 14px; transition: all 0.2s; }
+        .sp-tab.active { background: none; color: var(--text); border-bottom: 2px solid var(--silver-light); }
+        .sp-tab:hover:not(.active) { color: var(--silver); }
         .sp-body { padding: 24px; flex: 1; }
         .cal-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
-        .cal-swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .cal-swatch { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
       `}</style>
     </div>
   );
