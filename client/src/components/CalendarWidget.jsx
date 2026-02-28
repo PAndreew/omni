@@ -5,6 +5,7 @@ import { useSocket } from '../hooks/useSocket.js';
 export default function CalendarWidget({ focused }) {
   const [events, setEvents] = useState([]);
   const [month, setMonth] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState(new Date());
 
   const loadEvents = () =>
     fetch('/api/events').then(r => r.json()).then(setEvents).catch(() => {});
@@ -25,10 +26,9 @@ export default function CalendarWidget({ focused }) {
     eventsByDay[date].push(ev);
   }
 
-  const today = new Date();
-  const todayEvents = events.filter(e => {
-    try { return isSameDay(parseISO(e.start_time), today); } catch { return false; }
-  });
+  const selectedKey = format(selectedDay, 'yyyy-MM-dd');
+  const selectedEvents = eventsByDay[selectedKey] || [];
+  const isSelectedToday = isSameDay(selectedDay, new Date());
 
   return (
     <div className={`tile cal-tile ${focused ? 'focused' : ''}`}>
@@ -51,8 +51,11 @@ export default function CalendarWidget({ focused }) {
         {days.map(day => {
           const key = format(day, 'yyyy-MM-dd');
           const dayEvents = eventsByDay[key] || [];
+          const isSelected = isSameDay(day, selectedDay);
           return (
-            <div key={key} className={`cal-day ${isToday(day) ? 'today' : ''} ${dayEvents.length ? 'has-events' : ''}`}>
+            <div key={key}
+              className={`cal-day ${isToday(day) ? 'today' : ''} ${dayEvents.length ? 'has-events' : ''} ${isSelected ? 'selected' : ''}`}
+              onClick={() => setSelectedDay(day)}>
               <span>{format(day, 'd')}</span>
               {dayEvents.length > 0 && (
                 <div className="cal-dots">
@@ -66,40 +69,49 @@ export default function CalendarWidget({ focused }) {
         })}
       </div>
 
-      {todayEvents.length > 0 && (
-        <div className="cal-today-events">
-          {todayEvents.map(ev => (
-            <div key={ev.id} className="glass cal-event">
-              <span className="cal-event-dot" style={{ background: ev.color || 'var(--cyan)' }} />
-              <span className="cal-event-title">{ev.title}</span>
-              <span className="cal-event-time">
-                {ev.start_time.includes('T') ? format(parseISO(ev.start_time), 'h:mm a') : 'All day'}
-              </span>
-            </div>
-          ))}
+      <div className="cal-today-events">
+        <div className="cal-selected-label">
+          {isSelectedToday ? 'Today' : format(selectedDay, 'MMM d')}
+          {selectedEvents.length > 0 && <span style={{ color: 'var(--cyan)', marginLeft: 6 }}>{selectedEvents.length}</span>}
         </div>
-      )}
+        {selectedEvents.length > 0 ? selectedEvents.map(ev => (
+          <div key={ev.id} className="glass cal-event">
+            <span className="cal-event-dot" style={{ background: ev.color || 'var(--cyan)' }} />
+            <span className="cal-event-title">{ev.title}</span>
+            <span className="cal-event-time">
+              {ev.all_day || !ev.start_time.includes('T') ? 'All day' : format(parseISO(ev.start_time), 'h:mm a')}
+            </span>
+          </div>
+        )) : (
+          <div style={{ fontSize: 14, color: 'var(--text-muted)', padding: '6px 0' }}>No events</div>
+        )}
+      </div>
 
       <style>{`
         .cal-tile { display: flex; flex-direction: column; gap: 12px; }
         .cal-header { display: flex; justify-content: space-between; align-items: center; }
         .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-        .cal-dow  { text-align: center; font-size: 11px; letter-spacing: 0.08em; color: var(--text-dim);
+        .cal-dow  { text-align: center; font-size: 13px; letter-spacing: 0.08em; color: var(--text-dim);
                     text-transform: uppercase; padding: 4px 0; }
         .cal-day  { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center;
-                    justify-content: center; border-radius: 6px; font-size: 13px;
-                    font-family: 'Roboto Mono', monospace; cursor: default; position: relative;
+                    justify-content: center; border-radius: 6px; font-size: 16px;
+                    font-family: 'Roboto Mono', monospace; cursor: pointer; position: relative;
                     color: var(--text-dim); transition: background 0.15s; }
+        .cal-day:hover { background: rgba(255,255,255,0.05); }
         .cal-day.today { background: rgba(0,212,255,0.12); color: var(--cyan); font-weight: 700; }
         .cal-day.has-events { color: var(--text); }
-        .cal-dots { display: flex; gap: 2px; margin-top: 2px; }
-        .cal-dot  { width: 4px; height: 4px; border-radius: 50%; }
+        .cal-day.selected { background: rgba(255,0,170,0.15); outline: 1px solid var(--magenta); }
+        .cal-day.selected.today { background: rgba(0,212,255,0.2); outline: 1px solid var(--cyan); }
+        .cal-selected-label { font-size: 13px; font-weight: 600; letter-spacing: 0.1em;
+                              text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; }
+        .cal-dots { display: flex; gap: 2px; margin-top: 3px; }
+        .cal-dot  { width: 5px; height: 5px; border-radius: 50%; }
         .cal-today-events { display: flex; flex-direction: column; gap: 4px; }
         .cal-event { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
-        .cal-event-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-        .cal-event-title { font-size: 13px; }
-        .cal-event-time  { font-size: 12px; color: var(--text-dim); margin-left: auto; }
-        .cal-month-label { font-size: 14px; font-weight: 600; }
+        .cal-event-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+        .cal-event-title { font-size: 15px; }
+        .cal-event-time  { font-size: 13px; color: var(--text-dim); margin-left: auto; white-space: nowrap; }
+        .cal-month-label { font-size: 16px; font-weight: 600; }
         @media (max-width: 768px) {
           .cal-dow  { font-size: 12px; }
           .cal-day  { font-size: 15px; }
