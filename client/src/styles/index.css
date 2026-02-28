@@ -29,6 +29,7 @@ html, body, #root {
   font-family: 'Inter', sans-serif;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none; /* Kill pull-to-refresh and rubber-banding */
 }
 
 /* Mobile: allow scrolling */
@@ -38,6 +39,7 @@ html, body, #root {
     min-height: 100%;
     overflow-x: hidden;   /* kill horizontal scroll/drag */
     overflow-y: auto;
+    touch-action: pan-y;   /* strict: only allow vertical panning */
   }
 }
 
