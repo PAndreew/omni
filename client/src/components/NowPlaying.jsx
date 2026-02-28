@@ -2,6 +2,18 @@ import { useState, useEffect, useCallback } from 'react';
 import { Search, X, Play, Music, SkipBack, SkipForward, Pause, Square } from 'lucide-react';
 import { useSocket } from '../hooks/useSocket.js';
 
+const PrevIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M19 20L9 12L19 4V20ZM5 19H7V5H5V19Z" />
+  </svg>
+);
+
+const NextIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M5 4L15 12L5 20V4ZM17 5H19V19H17V5Z" />
+  </svg>
+);
+
 export default function NowPlaying({ focused }) {
   const [track, setTrack] = useState(null);
   const [search, setSearch] = useState('');
