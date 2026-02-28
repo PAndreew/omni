@@ -22,4 +22,6 @@ exec chromium-browser \
   --disable-restore-session-state \
   --disable-component-update \
   --no-first-run \
+  --disk-cache-size=0 \
+  --disable-application-cache \
   --app=http://localhost:3001
