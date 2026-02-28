@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { Mic, MicOff, Volume2, Loader } from 'lucide-react';
 import { useVoiceRecognition, useTTS } from '../hooks/useVoice.js';
 import { useSocket } from '../hooks/useSocket.js';
 
@@ -49,9 +50,14 @@ export default function VoiceAssistant({ focused }) {
     else { start(); setActive(true); setStatus('listening'); }
   }, [active, start, stop]);
 
+  const MicIcon = status === 'processing' ? Loader
+                : status === 'speaking'   ? Volume2
+                : active                  ? Mic
+                :                          MicOff;
+
   if (!supported) return (
     <div className={`tile ${focused ? 'focused' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      <span style={{ fontSize: 24 }}>🎤</span>
+      <MicOff size={20} strokeWidth={1.5} style={{ color: 'var(--text-dim)' }} />
       <span style={{ fontSize: 13, color: 'var(--text-dim)' }}>Voice recognition not supported in this browser.</span>
     </div>
   );
@@ -59,15 +65,16 @@ export default function VoiceAssistant({ focused }) {
   return (
     <div className={`tile voice-tile ${focused ? 'focused' : ''}`}>
       <div className="voice-inner">
-        {/* Mic button */}
         <button className={`voice-btn ${status !== 'idle' ? 'active' : ''}`} onClick={toggle} aria-label="Toggle voice">
           {status === 'wake' && <div className="voice-ripple" />}
-          <span className="voice-icon">
-            {status === 'processing' ? '⏳' : status === 'speaking' ? '🔊' : '🎤'}
-          </span>
+          <MicIcon
+            size={22}
+            strokeWidth={1.5}
+            style={{ color: status === 'processing' ? 'var(--gold)' : status === 'speaking' ? 'var(--green)' : status !== 'idle' ? 'var(--cyan)' : 'var(--text-dim)' }}
+            className={status === 'processing' ? 'spin' : ''}
+          />
         </button>
 
-        {/* Status + transcript */}
         <div className="voice-text">
           <div className="voice-status">
             {status === 'idle'       && <span style={{ color: 'var(--text-muted)' }}>Say <em>"Hey Omni"</em> to activate</span>}
@@ -81,7 +88,6 @@ export default function VoiceAssistant({ focused }) {
           )}
         </div>
 
-        {/* Toggle button */}
         <button className="btn" onClick={toggle}>
           {active ? 'Stop' : 'Start'}
         </button>
@@ -103,8 +109,8 @@ export default function VoiceAssistant({ focused }) {
                        display: flex; align-items: center; justify-content: center; cursor: pointer;
                        transition: all 0.3s; flex-shrink: 0; }
         .voice-btn.active { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0,212,255,0.3); }
-        .voice-icon  { font-size: 22px; z-index: 1;
-                        font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spin { animation: spin 1s linear infinite; }
       `}</style>
     </div>
   );

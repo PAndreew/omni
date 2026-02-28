@@ -1,4 +1,25 @@
 import { useState, useEffect } from 'react';
+import {
+  Sun, CloudSun, Cloud, Cloudy, CloudFog,
+  CloudDrizzle, CloudRain, CloudSnow, CloudLightning, CloudHail,
+} from 'lucide-react';
+
+const ICON_MAP = {
+  'sun':           Sun,
+  'partly-cloudy': CloudSun,
+  'cloud':         Cloudy,
+  'fog':           CloudFog,
+  'drizzle':       CloudDrizzle,
+  'rain':          CloudRain,
+  'snow':          CloudSnow,
+  'storm':         CloudLightning,
+  'hail':          CloudHail,
+};
+
+function WeatherIcon({ code, size = 52, style = {} }) {
+  const Icon = ICON_MAP[code] ?? Cloud;
+  return <Icon size={size} strokeWidth={1.25} style={{ color: 'var(--text-dim)', flexShrink: 0, ...style }} />;
+}
 
 export default function Weather({ focused }) {
   const [weather, setWeather] = useState(null);
@@ -32,7 +53,7 @@ export default function Weather({ focused }) {
       <p className="title">{weather.city} · Weather</p>
 
       <div className="weather-main">
-        <span className="weather-icon">{weather.condition.icon}</span>
+        <WeatherIcon code={weather.condition.icon} size={52} />
         <div>
           <div className="weather-temp">{weather.temp}°</div>
           <div className="weather-label">{weather.condition.label}</div>
@@ -46,7 +67,7 @@ export default function Weather({ focused }) {
         {weather.forecast.map((day, i) => (
           <div key={i} className="glass forecast-day">
             <div className="forecast-date">{new Date(day.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</div>
-            <div className="forecast-icon">{day.condition.icon}</div>
+            <WeatherIcon code={day.condition.icon} size={18} />
             <div className="forecast-range">
               <span style={{ color: 'var(--text)' }}>{day.high}°</span>
               <span style={{ color: 'var(--text-dim)' }}>{day.low}°</span>
@@ -58,8 +79,6 @@ export default function Weather({ focused }) {
       <style>{`
         .weather-tile { display: flex; flex-direction: column; gap: 16px; }
         .weather-main { display: flex; align-items: center; gap: 20px; }
-        .weather-icon { font-size: 56px; filter: drop-shadow(0 0 12px rgba(0,212,255,0.3));
-                        font-family: 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif; }
         .weather-temp { font-size: clamp(36px, 4vw, 56px); font-weight: 300;
                         font-family: 'Roboto Mono', monospace; letter-spacing: -1px; }
         .weather-label { font-size: 14px; color: var(--text-dim); font-weight: 300; text-transform: uppercase; letter-spacing: 0.1em; }
@@ -67,7 +86,6 @@ export default function Weather({ focused }) {
         .weather-forecast { display: flex; gap: 8px; }
         .forecast-day { flex: 1; padding: 10px 8px; text-align: center; display: flex; flex-direction: column; gap: 4px; align-items: center; }
         .forecast-date { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); }
-        .forecast-icon { font-size: 22px; }
         .forecast-range { display: flex; gap: 6px; font-size: 12px; font-family: 'Roboto Mono', monospace; }
       `}</style>
     </div>
