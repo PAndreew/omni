@@ -18,7 +18,7 @@ export default function ChoreList({ focused }) {
     loadChores();
   }, [loadChores]);
 
-  useSocket('chore:added',   (c) => setChores(prev => [c, ...prev]));
+  useSocket('chore:added',   (c) => setChores(prev => prev.some(x => x.id === c.id) ? prev : [c, ...prev]));
   useSocket('chore:updated', (c) => setChores(prev => prev.map(x => x.id === c.id ? c : x)));
   useSocket('chore:deleted', ({ id }) => setChores(prev => prev.filter(x => x.id !== id)));
 
@@ -34,7 +34,7 @@ export default function ChoreList({ focused }) {
 
   const addChore = useCallback(async () => {
     const title = newChore.trim();
-    if (!title) return;
+    if (!title) { setDebug('Type a chore first'); setTimeout(() => setDebug(''), 2000); return; }
     setDebug('Adding...');
     try {
       const res = await fetch('/api/chores', {
@@ -43,9 +43,11 @@ export default function ChoreList({ focused }) {
         body: JSON.stringify({ title }),
       });
       if (res.ok) {
-        setDebug('Success');
+        const added = await res.json();
+        setChores(prev => prev.some(c => c.id === added.id) ? prev : [added, ...prev]);
+        setDebug('Added!');
         setNewChore('');
-        setTimeout(() => setDebug(''), 3000);
+        setTimeout(() => setDebug(''), 2000);
       } else {
         setDebug('Failed to add');
       }
