@@ -1,0 +1,57 @@
+services:
+  omniwall:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: omniwall:latest
+    container_name: omniwall
+    restart: unless-stopped
+
+    ports:
+      - "${PORT:-3001}:3001"
+
+    volumes:
+      # Persistent SQLite database
+      - omniwall_data:/app/server/data
+
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      DB_PATH: /app/server/data/omniwall.db
+      # Override these to point at your location
+      WEATHER_LAT: ${WEATHER_LAT:-51.5074}
+      WEATHER_LON: ${WEATHER_LON:--0.1278}
+      WEATHER_CITY: ${WEATHER_CITY:-London}
+
+    # ── CEC & Audio access ──────────────────────────────────────────────────
+    # Uncomment to give the container access to HDMI-CEC and audio devices.
+    # Required for TV remote control and playerctl metadata.
+    #
+    # devices:
+    #   - /dev/cec0:/dev/cec0       # HDMI-CEC (RPi)
+    #   - /dev/cec1:/dev/cec1
+    #   - /dev/snd:/dev/snd         # ALSA audio
+    #
+    # environment (add to above block):
+    #   DBUS_SESSION_BUS_ADDRESS: ${DBUS_SESSION_BUS_ADDRESS}
+    #
+    # volumes (add to above block):
+    #   - /run/user/${UID:-1000}:/run/user/1000:ro   # systemd user session (playerctl)
+    #   - /tmp/.X11-unix:/tmp/.X11-unix:ro           # X11 (optional)
+
+    healthcheck:
+      test: ["CMD-SHELL", "bun -e \"fetch('http://localhost:3001/api/weather').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  omniwall_data:
+    driver: local

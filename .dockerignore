@@ -1,0 +1,29 @@
+# Dependencies (rebuilt inside container)
+node_modules
+server/node_modules
+client/node_modules
+
+# Build artifacts (rebuilt in Docker stages)
+client/dist
+
+# Database (use Docker volume)
+server/data
+server/*.db
+*.db
+
+# Dev / editor
+.git
+.gitignore
+*.md
+.vscode
+.idea
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.*
+!.env.example

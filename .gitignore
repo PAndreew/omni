@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+client/dist/
+
+# Database & user data
+server/data/
+*.db
+*.sqlite
+
+# Environment / secrets
+.env
+.env.local
+.env.*.local
+
+# Raspotify credentials (never commit these)
+credentials.json
+/var/cache/raspotify/
+
+# Logs
+*.log
+/tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Bun
+bun.lockb
