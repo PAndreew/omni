@@ -59,6 +59,12 @@ html, body, #root {
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
+/* Ensure content is always above decorative pseudo-elements */
+.tile > * {
+  position: relative;
+  z-index: 1;
+}
+
 @media (max-width: 768px) {
   .tile { padding: 16px; border-radius: 20px; }
 }
@@ -138,8 +144,6 @@ html, body, #root {
   font-size: 12px;
   padding: 8px 16px;
   transition: all 0.2s;
-  position: relative; /* Ensure buttons stay on top */
-  z-index: 2;
 }
 .btn:hover { border-color: var(--cyan); color: var(--cyan); }
 .btn.primary {
@@ -160,8 +164,6 @@ html, body, #root {
   padding: 8px 12px;
   transition: border-color 0.2s;
   width: 100%;
-  position: relative;
-  z-index: 2;
 }
 .input:focus { border-color: var(--cyan); }
 .input::placeholder { color: var(--text-muted); }
