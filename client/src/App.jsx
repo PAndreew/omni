@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Settings, Smartphone } from 'lucide-react';
+import { Gamepad2, Settings, Smartphone } from 'lucide-react';
 import { useCecKeyboardOpen } from './hooks/useCecKeyboard.js';
 import { useGamepad } from './hooks/useGamepad.js';
 import Clock from './components/Clock.jsx';
@@ -12,6 +12,8 @@ import VoiceAssistant from './components/VoiceAssistant.jsx';
 import TerminalWidget from './components/TerminalWidget.jsx';
 import NotificationManager from './components/Notifications.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
+import GamesMenu from './components/GamesMenu.jsx';
+import ZatackaStage from './components/games/ZatackaStage.jsx';
 import { useSocket, getSocket } from './hooks/useSocket.js';
 
 const TILES = ['clock', 'weather', 'nowplaying', 'chores', 'calendar', 'rss', 'voice', 'terminal'];
@@ -25,6 +27,9 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [spotifyTab, setSpotifyTab]     = useState(false);
   const [widgetMode, setWidgetMode]     = useState(false);
+  const [showGames, setShowGames]       = useState(false);
+  const [activeGame, setActiveGame]     = useState(null);
+  const [activeGameConfig, setActiveGameConfig] = useState(null);
 
   // Open settings on Spotify OAuth callback redirect
   useEffect(() => {
@@ -209,11 +214,24 @@ export default function App() {
 
   const openAdmin  = () => setShowLogin(true);
   const openRemote = () => window.open(`${window.location.protocol}//${window.location.hostname}:3001/remote`, '_blank');
+  const toggleGames = () => setShowGames(prev => !prev);
+  const launchGame = (gameId, config) => {
+    setActiveGame(gameId);
+    setActiveGameConfig(config);
+    setShowGames(false);
+  };
+  const closeGame = () => {
+    setActiveGame(null);
+    setActiveGameConfig(null);
+  };
 
   return (
     <>
       <div className="shell">
         <nav className="sidebar">
+          <button className="sidebar-btn games-btn" onClick={toggleGames} title="Open games menu">
+            <Gamepad2 size={18} strokeWidth={1.5} />
+          </button>
           <button className="sidebar-btn" onClick={openRemote} title="Open remote control on this device">
             <Smartphone size={18} strokeWidth={1.5} />
           </button>
@@ -262,6 +280,8 @@ export default function App() {
 
       <SettingsPanel open={showSettings} onClose={() => { setShowSettings(false); setSpotifyTab(false); }}
                      initialTab={spotifyTab ? 'spotify' : null} />
+      <GamesMenu open={showGames} onClose={() => setShowGames(false)} onLaunch={launchGame} />
+      <ZatackaStage open={activeGame === 'zatacka'} config={activeGameConfig} onClose={closeGame} />
       <NotificationManager />
 
       <style>{`
@@ -269,6 +289,36 @@ export default function App() {
         .sidebar { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; width: 48px; flex-shrink: 0; padding: 12px 0; border-right: 1px solid var(--border); gap: 12px; z-index: 10; }
         .sidebar-btn { width: 36px; height: 36px; background: transparent; border: none; color: var(--silver); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: color 0.2s; }
         .sidebar-btn:hover { color: var(--silver-light); }
+        .games-btn { color: var(--silver-light); }
+
+        .games-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 420; display: flex; align-items: flex-end; justify-content: flex-start; }
+        .games-panel { width: min(440px, calc(100vw - 32px)); margin: 0 0 72px 56px; padding: 18px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+        .games-panel header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+        .games-panel h3 { font-size: 12px; font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; color: var(--silver-light); }
+        .games-panel .section-title { font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-muted); margin: 14px 0 8px; }
+        .games-list { display: grid; gap: 8px; }
+        .games-card { display: grid; gap: 6px; padding: 12px; border: 1px solid var(--border); background: var(--surface-2); cursor: pointer; transition: border-color 0.2s; text-align: left; color: var(--text); font-family: inherit; border-radius: 0; }
+        .games-card.active { border-color: var(--silver); }
+        .games-card-title { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; }
+        .games-card-desc { font-size: 12px; color: var(--text-dim); }
+        .games-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .games-pill { padding: 6px 10px; border: 1px solid var(--border); background: var(--surface-2); font-size: 11px; color: var(--text-dim); cursor: pointer; border-radius: 0; }
+        .games-pill.active { border-color: var(--silver); color: var(--silver-light); }
+        .games-field { display: grid; gap: 6px; }
+        .games-field label { font-size: 11px; color: var(--text-muted); }
+        .games-field input, .games-field select { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); padding: 6px 8px; font-family: inherit; font-size: 12px; }
+        .games-players { display: grid; gap: 8px; }
+        .games-player { display: grid; grid-template-columns: 1fr 1fr 70px; gap: 8px; align-items: end; }
+        .games-color-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; border: 1px solid rgba(255,255,255,0.2); }
+        .games-actions { display: flex; gap: 8px; margin-top: 16px; }
+
+        .game-stage-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 520; display: flex; align-items: center; justify-content: center; }
+        .game-stage { width: min(980px, calc(100vw - 32px)); background: var(--surface); border: 1px solid var(--border); }
+        .game-stage header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+        .game-stage-title { font-size: 12px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--silver-light); }
+        .game-stage-body { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 14px; padding: 16px; }
+        .game-stage-canvas { width: 100%; height: 540px; background: #050505; border: 1px solid var(--border); }
+        .game-stage-meta { display: grid; gap: 10px; font-size: 12px; color: var(--text-dim); }
 
         .app-grid {
           flex: 1; display: grid;
@@ -297,6 +347,12 @@ export default function App() {
         @media (max-width: 768px) {
           .shell { flex-direction: column; height: auto; min-height: 100vh; overflow-x: hidden; overflow-y: auto; }
           .sidebar { flex-direction: row; width: 100%; height: 48px; justify-content: flex-end; padding: 0 12px; border-right: none; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--void); z-index: 200; }
+          .games-btn { margin-right: auto; }
+          .games-backdrop { align-items: flex-start; }
+          .games-panel { margin: 60px 12px 12px; width: calc(100vw - 24px); }
+          .game-stage { width: calc(100vw - 24px); }
+          .game-stage-body { grid-template-columns: 1fr; }
+          .game-stage-canvas { height: 320px; }
           .app-grid { display: flex; flex-direction: column; height: auto; width: 100%; max-width: 100%; overflow-x: hidden; gap: 10px; padding: 10px; }
           .grid-area-clock > *, .grid-area-weather > *, .grid-area-nowplaying > *, .grid-area-chores > *, .grid-area-calendar > *, .grid-area-rss > *, .grid-area-voice > *, .grid-area-terminal > * { height: auto; }
           .clock-tile { flex-direction: row !important; align-items: center; gap: 12px; }

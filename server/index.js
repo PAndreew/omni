@@ -14,6 +14,7 @@ import layoutRouter from './routes/layout.js';
 import eventsRouter from './routes/events.js';
 import calendarsRouter from './routes/calendars.js';
 import rssRouter from './routes/rss.js';
+import gamesRouter from './routes/games.js';
 import { startCEC } from './services/cec.js';
 import { startAudioBridge, getCurrentTrack, sendCommand } from './services/audio.js';
 import { startScheduler } from './services/scheduler.js';
@@ -54,6 +55,7 @@ app.use('/api/events',    eventsRouter);
 app.use('/api/calendars', calendarsRouter);
 app.use('/api/spotify',   spotifyRouter);
 app.use('/api/rss',       rssRouter);
+app.use('/api/games',     gamesRouter);
 
 // Audio control
 app.post('/api/audio/:cmd', async (req, res) => {
