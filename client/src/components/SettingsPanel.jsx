@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Calendar, Cloud, Music2, Lock, X, Rss } from 'lucide-react';
+import { Calendar, Cloud, Music2, Lock, X, Rss, Eye, EyeOff, Trash2, Settings } from 'lucide-react';
 
 const COLORS = ['#00d4ff', '#ff00aa', '#ffd700', '#00ff88', '#a855f7', '#f97316'];
 
@@ -216,18 +216,17 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
                     )}
                   </div>
                   <button
-                    className="btn"
-                    style={{ padding: '3px 8px', fontSize: 11 }}
+                    className="btn icon-btn"
                     onClick={() => toggleCalendar(cal)}
                     title={cal.enabled ? 'Disable' : 'Enable'}
                   >
-                    {cal.enabled ? '●' : '○'}
+                    {cal.enabled ? <Eye size={13} /> : <EyeOff size={13} />}
                   </button>
                   <button
-                    className="btn"
-                    style={{ padding: '3px 8px', fontSize: 11, color: 'var(--magenta)' }}
+                    className="btn icon-btn"
                     onClick={() => deleteCalendar(cal.id)}
-                  >✕</button>
+                    title="Delete"
+                  ><Trash2 size={13} /></button>
                 </div>
               ))}
               {calendars.length === 0 && (
@@ -274,9 +273,9 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
               <summary style={{ fontSize: 11, color: 'var(--text-dim)', cursor: 'pointer' }}>How to get your iCal URL ›</summary>
               <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 10, lineHeight: 1.8, background: 'var(--surface-2)', padding: 12, borderRadius: 10 }}>
                 <strong style={{ color: 'var(--text)' }}>Google Calendar:</strong><br />
-                calendar.google.com → ⚙ Settings → click your calendar → "Integrate calendar" → copy the <em>Secret address in iCal format</em> (starts with https://…/basic.ics)<br /><br />
+                calendar.google.com → Settings → click your calendar → "Integrate calendar" → copy the <em>Secret address in iCal format</em> (starts with https://…/basic.ics)<br /><br />
                 <strong style={{ color: 'var(--text)' }}>Apple iCloud:</strong><br />
-                iCloud.com → Calendar → ⋯ next to a calendar → "Share Calendar" → enable "Public Calendar" → copy the link (starts with webcal://)<br /><br />
+                iCloud.com → Calendar → More options next to a calendar → "Share Calendar" → enable "Public Calendar" → copy the link (starts with webcal://)<br /><br />
                 <strong style={{ color: 'var(--text)' }}>iOS Reminders / other apps:</strong><br />
                 Any standard .ics subscription URL works.
               </div>
@@ -388,18 +387,17 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
                     </div>
                   </div>
                   <button
-                    className="btn"
-                    style={{ padding: '3px 8px', fontSize: 11 }}
+                    className="btn icon-btn"
                     onClick={() => toggleRssFeed(feed)}
                     title={feed.enabled ? 'Disable' : 'Enable'}
                   >
-                    {feed.enabled ? '●' : '○'}
+                    {feed.enabled ? <Eye size={13} /> : <EyeOff size={13} />}
                   </button>
                   <button
-                    className="btn"
-                    style={{ padding: '3px 8px', fontSize: 11, color: 'var(--magenta)' }}
+                    className="btn icon-btn"
                     onClick={() => deleteRssFeed(feed.id)}
-                  >✕</button>
+                    title="Delete"
+                  ><Trash2 size={13} /></button>
                 </div>
               ))}
               {rssFeeds.length === 0 && (
@@ -484,6 +482,7 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
         .sp-body { padding: 24px; flex: 1; }
         .cal-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
         .cal-swatch { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .icon-btn { padding: 5px 7px; display: flex; align-items: center; justify-content: center; }
       `}</style>
     </div>
   );
