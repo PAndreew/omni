@@ -196,6 +196,17 @@ export default function RssWidget({ focused }) {
                       color: var(--text-light); }
         .modal-body img { max-width: 100%; height: auto; border-radius: 8px; margin: 12px 0; }
         .modal-footer { margin-top: 20px; display: flex; justify-content: flex-end; }
+
+        /* Mobile: cap height and scroll */
+        @media (max-width: 768px) {
+          .rss-tile {
+            max-height: 400px;
+          }
+          .rss-list {
+            max-height: 320px;
+            flex: none;
+          }
+        }
       `}</style>
     </div>
   );
