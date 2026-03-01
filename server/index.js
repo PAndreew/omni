@@ -12,6 +12,7 @@ import settingsRouter from './routes/settings.js';
 import layoutRouter from './routes/layout.js';
 import eventsRouter from './routes/events.js';
 import calendarsRouter from './routes/calendars.js';
+import rssRouter from './routes/rss.js';
 import { startCEC } from './services/cec.js';
 import { startAudioBridge, getCurrentTrack, sendCommand } from './services/audio.js';
 import { startScheduler } from './services/scheduler.js';
@@ -50,7 +51,8 @@ app.use('/api/settings',  settingsRouter);
 app.use('/api/layout',    layoutRouter);
 app.use('/api/events',    eventsRouter);
 app.use('/api/calendars', calendarsRouter);
-app.use('/api/spotify',  spotifyRouter);
+app.use('/api/spotify',   spotifyRouter);
+app.use('/api/rss',       rssRouter);
 
 // Audio control
 app.post('/api/audio/:cmd', async (req, res) => {
@@ -69,8 +71,11 @@ app.post('/api/voice/command', async (req, res) => {
 });
 
 // Serve built frontend in production
-const clientDist = path.join(__dirname, '../client/dist');
+const clientDist  = path.join(__dirname, '../client/dist');
+const serverPublic = path.join(__dirname, 'public');
+app.use(express.static(serverPublic));
 app.use(express.static(clientDist));
+app.get('/remote', (_req, res) => res.sendFile(path.join(serverPublic, 'remote.html')));
 app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
 
 // Socket.io
@@ -81,8 +86,13 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => console.log(`[WS] Client disconnected: ${socket.id}`));
 
-  // Gamepad / client can emit cec:select and we broadcast to all clients (same as CEC hardware)
+  // Remote / gamepad can emit cec:* events and we broadcast to all clients (same as CEC hardware)
   socket.on('cec:select', () => io.emit('cec:select'));
+  socket.on('cec:up',    () => io.emit('cec:up'));
+  socket.on('cec:down',  () => io.emit('cec:down'));
+  socket.on('cec:left',  () => io.emit('cec:left'));
+  socket.on('cec:right', () => io.emit('cec:right'));
+  socket.on('cec:back',  () => io.emit('cec:back'));
 
   // CEC commands from frontend (for admin mode)
   socket.on('cec:cmd', ({ cmd }) => {

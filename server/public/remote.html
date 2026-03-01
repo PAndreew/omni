@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>OmniWall Remote</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --void:    #000000;
+      --surface: #0d0d0d;
+      --border:  #1e1e1e;
+      --silver:  #787878;
+      --silver-light: #b0b0b0;
+      --text:    #cccccc;
+      --green:   #3dba6e;
+      --red:     #e05555;
+      --radius:  16px;
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--void);
+      color: var(--text);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      overflow: hidden;
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    /* ─── Layout ─────────────────────────────────────── */
+    .remote {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      height: 100dvh;
+      padding: 20px 16px max(env(safe-area-inset-bottom, 12px), 12px);
+      gap: 16px;
+    }
+
+    /* ─── Status bar ─────────────────────────────────── */
+    .status-bar {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--silver);
+    }
+    .status-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--red);
+      display: inline-block;
+      margin-right: 7px;
+      transition: background 0.4s;
+      flex-shrink: 0;
+    }
+    .status-dot.connected { background: var(--green); }
+    .status-left { display: flex; align-items: center; }
+
+    /* ─── Now Playing bar ────────────────────────────── */
+    .now-playing-bar {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      min-height: 54px;
+    }
+    .np-art {
+      width: 34px; height: 34px;
+      border-radius: 6px;
+      object-fit: cover;
+      background: var(--border);
+      flex-shrink: 0;
+    }
+    .np-info { flex: 1; min-width: 0; }
+    .np-title  { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .np-artist { font-size: 11px; color: var(--silver); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .np-idle   { font-size: 11px; color: var(--silver); font-style: italic; }
+
+    /* ─── D-pad ──────────────────────────────────────── */
+    .dpad-area {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .dpad-row { display: flex; align-items: center; }
+
+    .dpad-btn {
+      width: 80px; height: 80px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--silver-light);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      cursor: pointer;
+      transition: background 0.06s;
+      touch-action: manipulation;
+    }
+    .dpad-btn.pressed { background: #1c1c1c; color: #fff; }
+
+    .dpad-up    { border-radius: var(--radius) var(--radius) 0 0; }
+    .dpad-down  { border-radius: 0 0 var(--radius) var(--radius); }
+    .dpad-left  { border-radius: var(--radius) 0 0 var(--radius); }
+    .dpad-right { border-radius: 0 var(--radius) var(--radius) 0; }
+
+    .dpad-center {
+      width: 80px; height: 80px;
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 50%;
+      color: var(--silver-light);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.06s;
+      touch-action: manipulation;
+    }
+    .dpad-center.pressed { background: #1e1e1e; color: #fff; }
+
+    .dpad-spacer { width: 80px; height: 80px; }
+
+    /* ─── Action row ─────────────────────────────────── */
+    .action-row {
+      display: flex;
+      gap: 12px;
+      width: 100%;
+      max-width: 280px;
+    }
+    .action-btn {
+      flex: 1; height: 58px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--silver);
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      cursor: pointer;
+      transition: background 0.06s;
+      touch-action: manipulation;
+    }
+    .action-btn.pressed { background: #1c1c1c; color: var(--silver-light); }
+
+    /* ─── Media row ──────────────────────────────────── */
+    .media-row {
+      display: flex;
+      gap: 12px;
+      width: 100%;
+      max-width: 280px;
+    }
+    .media-btn {
+      flex: 1; height: 62px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--silver);
+      font-size: 20px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: background 0.06s;
+      touch-action: manipulation;
+    }
+    .media-btn.pressed { background: #1c1c1c; color: #fff; }
+    .media-play { font-size: 26px; }
+  </style>
+</head>
+<body>
+<div class="remote">
+
+  <!-- Status bar -->
+  <div class="status-bar">
+    <span class="status-left">
+      <span class="status-dot" id="dot"></span>
+      <span id="status-text">Connecting…</span>
+    </span>
+    <span>OmniWall Remote</span>
+  </div>
+
+  <!-- Now Playing bar -->
+  <div class="now-playing-bar">
+    <span class="np-idle" id="np-idle">Nothing playing</span>
+    <div id="np-track" style="display:none;width:100%;align-items:center;gap:10px;">
+      <img class="np-art" id="np-art" src="" alt="" />
+      <div class="np-info">
+        <div class="np-title"  id="np-title"></div>
+        <div class="np-artist" id="np-artist"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- D-pad -->
+  <div class="dpad-area">
+    <div class="dpad-row">
+      <div class="dpad-spacer"></div>
+      <button class="dpad-btn dpad-up"    data-event="cec:up"     aria-label="Up">▲</button>
+      <div class="dpad-spacer"></div>
+    </div>
+    <div class="dpad-row">
+      <button class="dpad-btn dpad-left"  data-event="cec:left"   aria-label="Left">◀</button>
+      <button class="dpad-center"         data-event="cec:select"  aria-label="Select">OK</button>
+      <button class="dpad-btn dpad-right" data-event="cec:right"  aria-label="Right">▶</button>
+    </div>
+    <div class="dpad-row">
+      <div class="dpad-spacer"></div>
+      <button class="dpad-btn dpad-down"  data-event="cec:down"   aria-label="Down">▼</button>
+      <div class="dpad-spacer"></div>
+    </div>
+  </div>
+
+  <!-- Back button -->
+  <div class="action-row">
+    <button class="action-btn" data-event="cec:back" aria-label="Back">← Back</button>
+  </div>
+
+  <!-- Media controls -->
+  <div class="media-row">
+    <button class="media-btn"       data-http="/api/audio/prev"   aria-label="Previous">⏮</button>
+    <button class="media-btn media-play" data-http="/api/audio/toggle" aria-label="Play/Pause" id="play-btn">▶</button>
+    <button class="media-btn"       data-http="/api/audio/next"   aria-label="Next">⏭</button>
+  </div>
+
+</div>
+
+<!-- Socket.io client is auto-served by the socket.io server, no CDN needed -->
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  // Connect to the Express/socket.io server.
+  // The remote is always served from port 3001, so window.location.origin works.
+  // The replace handles the rare dev case where someone proxies through :5173.
+  const origin = window.location.origin.replace(':5173', ':3001');
+  const socket = io(origin, { transports: ['websocket'], reconnection: true });
+
+  const dot        = document.getElementById('dot');
+  const statusText = document.getElementById('status-text');
+
+  socket.on('connect',       () => { dot.classList.add('connected');    statusText.textContent = 'Connected'; });
+  socket.on('disconnect',    () => { dot.classList.remove('connected'); statusText.textContent = 'Disconnected'; });
+  socket.on('connect_error', () => { dot.classList.remove('connected'); statusText.textContent = 'Connection failed'; });
+
+  // ─── Now Playing ─────────────────────────────────────────────
+  const npIdle   = document.getElementById('np-idle');
+  const npTrack  = document.getElementById('np-track');
+  const npArt    = document.getElementById('np-art');
+  const npTitle  = document.getElementById('np-title');
+  const npArtist = document.getElementById('np-artist');
+  const playBtn  = document.getElementById('play-btn');
+
+  function updateTrack(t) {
+    if (!t || !t.title) {
+      npIdle.style.display  = '';
+      npTrack.style.display = 'none';
+      playBtn.textContent   = '▶';
+      return;
+    }
+    npIdle.style.display   = 'none';
+    npTrack.style.display  = 'flex';
+    npTitle.textContent    = t.title;
+    npArtist.textContent   = t.artist || '';
+    npArt.src              = t.art || '';
+    npArt.style.display    = t.art ? '' : 'none';
+    playBtn.textContent    = t.status === 'playing' ? '⏸' : '▶';
+  }
+
+  socket.on('audio:track', updateTrack);
+  fetch('/api/audio/current').then(r => r.json()).then(t => { if (t && t.title) updateTrack(t); }).catch(() => {});
+
+  // ─── Socket-emitting buttons (data-event) ────────────────────
+  document.querySelectorAll('[data-event]').forEach(btn => {
+    const ev = btn.dataset.event;
+    const press   = () => { socket.emit(ev); btn.classList.add('pressed'); };
+    const release = () => btn.classList.remove('pressed');
+
+    btn.addEventListener('touchstart', e => { e.preventDefault(); press(); },   { passive: false });
+    btn.addEventListener('touchend',   () => release());
+    btn.addEventListener('mousedown',  () => press());
+    btn.addEventListener('mouseup',    () => release());
+  });
+
+  // ─── HTTP buttons (data-http) — media controls ───────────────
+  document.querySelectorAll('[data-http]').forEach(btn => {
+    const url = btn.dataset.http;
+    const press   = () => { fetch(url, { method: 'POST' }).catch(() => {}); btn.classList.add('pressed'); };
+    const release = () => btn.classList.remove('pressed');
+
+    btn.addEventListener('touchstart', e => { e.preventDefault(); press(); },   { passive: false });
+    btn.addEventListener('touchend',   () => release());
+    btn.addEventListener('mousedown',  () => press());
+    btn.addEventListener('mouseup',    () => release());
+  });
+</script>
+</body>
+</html>
