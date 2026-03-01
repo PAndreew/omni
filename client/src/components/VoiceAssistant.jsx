@@ -70,7 +70,7 @@ export default function VoiceAssistant({ focused }) {
           <MicIcon
             size={22}
             strokeWidth={1.5}
-            style={{ color: status === 'processing' ? 'var(--gold)' : status === 'speaking' ? 'var(--green)' : status !== 'idle' ? 'var(--cyan)' : 'var(--text-dim)' }}
+            style={{ color: status === 'processing' ? 'var(--silver-light)' : status === 'speaking' ? 'var(--green)' : status !== 'idle' ? 'var(--silver)' : 'var(--text-dim)' }}
             className={status === 'processing' ? 'spin' : ''}
           />
         </button>
@@ -78,9 +78,9 @@ export default function VoiceAssistant({ focused }) {
         <div className="voice-text">
           <div className="voice-status">
             {status === 'idle'       && <span style={{ color: 'var(--text-muted)' }}>Say <em>"Hey Omni"</em> to activate</span>}
-            {status === 'listening'  && <span style={{ color: 'var(--cyan)' }}>Listening… say "Hey Omni" to activate</span>}
+            {status === 'listening'  && <span style={{ color: 'var(--silver)' }}>Listening… say "Hey Omni" to activate</span>}
             {status === 'wake'       && <span className="chromatic-text" style={{ fontWeight: 600 }}>Wake word detected — listening for command…</span>}
-            {status === 'processing' && <span style={{ color: 'var(--gold)' }}>Processing: "{transcript}"</span>}
+            {status === 'processing' && <span style={{ color: 'var(--silver-light)' }}>Processing: "{transcript}"</span>}
             {status === 'speaking'   && <span style={{ color: 'var(--green)' }}>"{reply}"</span>}
           </div>
           {transcript && status !== 'speaking' && (
@@ -108,7 +108,7 @@ export default function VoiceAssistant({ focused }) {
                        background: var(--surface-2); border: 1.5px solid var(--border);
                        display: flex; align-items: center; justify-content: center; cursor: pointer;
                        transition: all 0.3s; flex-shrink: 0; }
-        .voice-btn.active { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0,212,255,0.3); }
+        .voice-btn.active { border-color: var(--silver); box-shadow: 0 0 12px rgba(176,176,176,0.15); }
         @keyframes spin { to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }
       `}</style>

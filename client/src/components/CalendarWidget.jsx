@@ -62,7 +62,7 @@ export default function CalendarWidget({ focused }) {
               {dayEvents.length > 0 && (
                 <div className="cal-dots">
                   {dayEvents.slice(0, 3).map((_, i) => (
-                    <span key={i} className="cal-dot" style={{ background: dayEvents[i]?.color || 'var(--cyan)' }} />
+                    <span key={i} className="cal-dot" style={{ background: dayEvents[i]?.color || 'var(--silver)' }} />
                   ))}
                 </div>
               )}
@@ -74,11 +74,11 @@ export default function CalendarWidget({ focused }) {
       <div className="cal-today-events">
         <div className="cal-selected-label">
           {isSelectedToday ? 'Today' : format(selectedDay, 'MMM d')}
-          {selectedEvents.length > 0 && <span style={{ color: 'var(--cyan)', marginLeft: 6 }}>{selectedEvents.length}</span>}
+          {selectedEvents.length > 0 && <span style={{ color: 'var(--silver-light)', marginLeft: 6 }}>{selectedEvents.length}</span>}
         </div>
         {selectedEvents.length > 0 ? selectedEvents.map(ev => (
           <div key={ev.id} className="glass cal-event">
-            <span className="cal-event-dot" style={{ background: ev.color || 'var(--cyan)' }} />
+            <span className="cal-event-dot" style={{ background: ev.color || 'var(--silver)' }} />
             <span className="cal-event-title">{ev.title}</span>
             <span className="cal-event-time">
               {ev.all_day || !ev.start_time.includes('T') ? 'All day' : format(parseISO(ev.start_time), 'h:mm a')}

@@ -130,7 +130,7 @@ export default function ChoreList({ focused }) {
                        transition: all 0.2s; }
         .chore-item.done .chore-check { background: var(--green); border-color: var(--green); }
         .chore-item.done .chore-check::after { content: '✓'; font-size: 10px; color: #000; font-weight: 700; }
-        .chore-text { font-size: 13px; font-weight: 300; flex: 1; }
+        .chore-text { font-size: 16px; font-weight: 300; flex: 1; }
         .chore-item.done .chore-text { text-decoration: line-through; }
         .chore-delete { background: none; border: none; color: var(--text-muted); cursor: pointer;
                         font-size: 16px; padding: 4px; opacity: 0; transition: opacity 0.2s; }

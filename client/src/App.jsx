@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Settings } from 'lucide-react';
 import { useCecKeyboardOpen } from './hooks/useCecKeyboard.js';
+import { useGamepad } from './hooks/useGamepad.js';
 import Clock from './components/Clock.jsx';
 import Weather from './components/Weather.jsx';
 import ChoreList from './components/ChoreList.jsx';
@@ -61,6 +62,16 @@ export default function App() {
   useSocket('cec:select', () => {
     if (!cecKeyboardOpen)
       document.querySelector(`[data-tile="${TILES[focusIdx]}"]`)?.click();
+  });
+
+  // PlayStation / Xbox gamepad navigation
+  useGamepad({
+    onUp:      () => { if (!cecKeyboardOpen) navigate('up'); },
+    onDown:    () => { if (!cecKeyboardOpen) navigate('down'); },
+    onLeft:    () => { if (!cecKeyboardOpen) navigate('left'); },
+    onRight:   () => { if (!cecKeyboardOpen) navigate('right'); },
+    onSelect:  () => { if (!cecKeyboardOpen) document.querySelector(`[data-tile="${TILES[focusIdx]}"]`)?.click(); },
+    onOptions: () => openAdmin(),
   });
 
   const login = async () => {
@@ -248,12 +259,6 @@ export default function App() {
 
           .clock-tile { flex-direction: row !important; align-items: center; gap: 12px; }
           .clock-date { margin-top: 0 !important; }
-
-          .nowplaying-tile { flex-direction: row !important; align-items: center; }
-          .np-art-container { width: 72px !important; max-height: 72px !important;
-                              aspect-ratio: 1/1; flex-shrink: 0; }
-          .np-art-reflection { display: none; }
-          .np-info { min-width: 0; }
 
           .voice-hint { display: none; }
           .chore-list { max-height: 220px; }
