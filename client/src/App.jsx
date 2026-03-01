@@ -23,6 +23,7 @@ export default function App() {
   const [showLogin, setShowLogin]     = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [spotifyTab, setSpotifyTab]     = useState(false);
+  const [widgetMode, setWidgetMode]     = useState(false);
 
   // Open settings on Spotify OAuth callback redirect
   useEffect(() => {
@@ -53,16 +54,22 @@ export default function App() {
   useEffect(() => {
     const handler = (e) => {
       const map = { ArrowRight:'right', ArrowLeft:'left', ArrowDown:'down', ArrowUp:'up' };
-      if (map[e.key]) { e.preventDefault(); navigate(map[e.key]); }
+      if (map[e.key]) {
+        e.preventDefault();
+        if (!widgetMode) navigate(map[e.key]);
+      }
+      if (e.key === 'Escape' && widgetMode) exitWidget();
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [navigate]);
+  }, [navigate, widgetMode, exitWidget]);
 
-  useSocket('cec:right',  () => { if (!cecKeyboardOpen) navigate('right'); });
-  useSocket('cec:left',   () => { if (!cecKeyboardOpen) navigate('left'); });
-  useSocket('cec:down',   () => { if (!cecKeyboardOpen) navigate('down'); });
-  useSocket('cec:up',     () => { if (!cecKeyboardOpen) navigate('up'); });
+  useSocket('cec:right',  () => { if (!cecKeyboardOpen) { if (widgetMode) widgetStep('next'); else navigate('right'); } });
+  useSocket('cec:left',   () => { if (!cecKeyboardOpen) { if (widgetMode) widgetStep('prev'); else navigate('left'); } });
+  useSocket('cec:down',   () => { if (!cecKeyboardOpen) { if (widgetMode) widgetStep('next'); else navigate('down'); } });
+  useSocket('cec:up',     () => { if (!cecKeyboardOpen) { if (widgetMode) widgetStep('prev'); else navigate('up'); } });
+  useSocket('cec:select', () => { if (!cecKeyboardOpen) { if (widgetMode) widgetActivate(); else enterWidget(); } });
+  useSocket('cec:back',   () => { if (widgetMode) exitWidget(); });
 
   // Remote text relay — inject into whichever <input>/<textarea> is focused on the kiosk
   useSocket('remote:type', (text) => {
@@ -106,6 +113,51 @@ export default function App() {
     setAdminPwd('');
   };
 
+  // ── Widget-mode: generic D-pad navigation within focused tile ──────────────
+  // Returns all keyboard-reachable elements inside the currently focused tile
+  const getTileFocusables = useCallback(() => {
+    const tile = document.querySelector(`[data-tile="${TILES[focusIdx]}"]`);
+    if (!tile) return [];
+    return Array.from(
+      tile.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href], textarea, select, [tabindex="0"]')
+    ).filter(el => el.offsetParent !== null);  // skip hidden
+  }, [focusIdx]);
+
+  const enterWidget = useCallback(() => {
+    setWidgetMode(true);
+    // Small delay so cec:select tile handlers (e.g. open form) run first
+    setTimeout(() => {
+      const els = getTileFocusables();
+      if (els.length) { els[0].focus(); els[0].scrollIntoView({ block: 'nearest' }); }
+    }, 60);
+  }, [getTileFocusables]);
+
+  const exitWidget = useCallback(() => {
+    setWidgetMode(false);
+    document.activeElement?.blur();
+  }, []);
+
+  const widgetStep = useCallback((dir) => {
+    const els = getTileFocusables();
+    if (!els.length) return;
+    const cur  = els.indexOf(document.activeElement);
+    const next = dir === 'next'
+      ? Math.min(cur < 0 ? 0 : cur + 1, els.length - 1)
+      : Math.max(cur <= 0 ? 0 : cur - 1, 0);
+    els[next].focus();
+    els[next].scrollIntoView({ block: 'nearest' });
+  }, [getTileFocusables]);
+
+  const widgetActivate = useCallback(() => {
+    const el = document.activeElement;
+    if (!el) return;
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    } else {
+      el.click();
+    }
+  }, []);
+
   const openAdmin  = () => setShowLogin(true);
   const openRemote = () => window.open(`${window.location.protocol}//${window.location.hostname}:3001/remote`, '_blank');
 
@@ -122,27 +174,18 @@ export default function App() {
         </nav>
 
         <div className="app-grid">
-          <div data-tile="clock"      className="grid-area-clock">
-            <Clock      focused={focusIdx === 0} />
-          </div>
-          <div data-tile="weather"    className="grid-area-weather">
-            <Weather    focused={focusIdx === 1} />
-          </div>
-          <div data-tile="nowplaying" className="grid-area-nowplaying">
-            <NowPlaying focused={focusIdx === 2} />
-          </div>
-          <div data-tile="chores"     className="grid-area-chores">
-            <ChoreList  focused={focusIdx === 3} />
-          </div>
-          <div data-tile="calendar"   className="grid-area-calendar">
-            <CalendarWidget focused={focusIdx === 4} />
-          </div>
-          <div data-tile="rss"        className="grid-area-rss">
-            <RssWidget  focused={focusIdx === 5} />
-          </div>
-          <div data-tile="voice"      className="grid-area-voice">
-            <VoiceAssistant focused={focusIdx === 6} />
-          </div>
+          {TILES.map((name, idx) => (
+            <div key={name} data-tile={name}
+                 className={`grid-area-${name}${widgetMode && focusIdx === idx ? ' widget-active' : ''}`}>
+              {name === 'clock'      && <Clock            focused={focusIdx === 0} />}
+              {name === 'weather'    && <Weather          focused={focusIdx === 1} />}
+              {name === 'nowplaying' && <NowPlaying       focused={focusIdx === 2} />}
+              {name === 'chores'     && <ChoreList        focused={focusIdx === 3} />}
+              {name === 'calendar'   && <CalendarWidget   focused={focusIdx === 4} />}
+              {name === 'rss'        && <RssWidget        focused={focusIdx === 5} />}
+              {name === 'voice'      && <VoiceAssistant   focused={focusIdx === 6} />}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -211,6 +254,16 @@ export default function App() {
 
         .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 500; }
         .modal { padding: 28px; border-radius: 0; width: min(360px, calc(100vw - 32px)); }
+
+        /* Widget mode: show focus ring on whatever element is selected */
+        .widget-active button:focus,
+        .widget-active input:focus,
+        .widget-active textarea:focus,
+        .widget-active a:focus,
+        .widget-active [tabindex="0"]:focus {
+          outline: 1px solid var(--silver);
+          outline-offset: 2px;
+        }
       `}</style>
     </>
   );

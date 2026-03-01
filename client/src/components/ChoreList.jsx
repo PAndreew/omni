@@ -144,7 +144,9 @@ export default function ChoreList({ focused }) {
 function ChoreItem({ chore, onToggle, onDelete, done, pulsing }) {
   return (
     <div className={`chore-item ${done ? 'done' : ''} ${pulsing ? 'pulsing' : ''}`}
-         onClick={() => onToggle(chore.id)}>
+         tabIndex={0}
+         onClick={() => onToggle(chore.id)}
+         onKeyDown={e => e.key === 'Enter' && onToggle(chore.id)}>
       <div className="chore-check" />
       <span className="chore-text">{chore.title}</span>
       {chore.assignee && <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{chore.assignee}</span>}
