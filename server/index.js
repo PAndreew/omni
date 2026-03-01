@@ -5,6 +5,7 @@ import { execSync } from 'child_process';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import pty from 'node-pty';
 
 import choresRouter from './routes/chores.js';
 import weatherRouter from './routes/weather.js';
@@ -78,13 +79,34 @@ app.use(express.static(clientDist));
 app.get('/remote', (_req, res) => res.sendFile(path.join(serverPublic, 'remote.html')));
 app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
 
+// ─── PTY session store ───────────────────────────────────────────────────────
+const ptySessions = {};   // sessionId → pty process
+
+function spawnPty(id, cols, rows, socket) {
+  if (ptySessions[id]) return;
+  const shell = process.env.SHELL || '/bin/bash';
+  const proc = pty.spawn(shell, [], {
+    name: 'xterm-256color',
+    cols: cols || 80,
+    rows: rows || 24,
+    cwd: process.env.HOME || '/home/pi',
+    env: { ...process.env, TERM: 'xterm-256color' },
+  });
+  proc._socketId = socket.id;   // track owner for cleanup on disconnect
+  ptySessions[id] = proc;
+
+  proc.onData(data => socket.emit('term:data', { id, data }));
+  proc.onExit(() => {
+    delete ptySessions[id];
+    socket.emit('term:closed', { id });
+  });
+}
+
 // Socket.io
 io.on('connection', (socket) => {
   console.log(`[WS] Client connected: ${socket.id}`);
   const track = getCurrentTrack();
   if (track) socket.emit('audio:track', track);
-
-  socket.on('disconnect', () => console.log(`[WS] Client disconnected: ${socket.id}`));
 
   // Remote / gamepad can emit cec:* events and we broadcast to all clients (same as CEC hardware)
   socket.on('cec:select', () => io.emit('cec:select'));
@@ -103,6 +125,24 @@ io.on('connection', (socket) => {
   socket.on('cec:cmd', ({ cmd }) => {
     if (cmd === 'standby') {
       try { execSync('echo standby 0 | cec-client -s -d 1', { stdio: 'ignore' }); } catch {}
+    }
+  });
+
+  // ── Terminal (PTY) sessions ──────────────────────────────────────────────
+  socket.on('term:open', ({ id, cols, rows }) => spawnPty(id, cols, rows, socket));
+  socket.on('term:input',  ({ id, data }) => { if (ptySessions[id]) ptySessions[id].write(data); });
+  socket.on('term:resize', ({ id, cols, rows }) => { if (ptySessions[id]) ptySessions[id].resize(cols, rows); });
+  socket.on('term:close',  ({ id }) => {
+    if (ptySessions[id]) { try { ptySessions[id].kill(); } catch {} delete ptySessions[id]; }
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`[WS] Client disconnected: ${socket.id}`);
+    for (const [id, proc] of Object.entries(ptySessions)) {
+      if (proc._socketId === socket.id) {
+        try { proc.kill(); } catch {}
+        delete ptySessions[id];
+      }
     }
   });
 });

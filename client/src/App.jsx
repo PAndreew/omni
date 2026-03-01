@@ -9,11 +9,12 @@ import NowPlaying from './components/NowPlaying.jsx';
 import RssWidget from './components/RssWidget.jsx';
 import CalendarWidget from './components/CalendarWidget.jsx';
 import VoiceAssistant from './components/VoiceAssistant.jsx';
+import TerminalWidget from './components/TerminalWidget.jsx';
 import NotificationManager from './components/Notifications.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
 import { useSocket, getSocket } from './hooks/useSocket.js';
 
-const TILES = ['clock', 'weather', 'nowplaying', 'chores', 'calendar', 'rss', 'voice'];
+const TILES = ['clock', 'weather', 'nowplaying', 'chores', 'calendar', 'rss', 'voice', 'terminal'];
 
 export default function App() {
   const [focusIdx, setFocusIdx]       = useState(0);
@@ -43,12 +44,63 @@ export default function App() {
       if (dir === 'right') return Math.min(prev + 1, TILES.length - 1);
       if (dir === 'left')  return Math.max(prev - 1, 0);
       if (dir === 'down') {
-         if (prev >= 6) return prev; // voice item
-         return Math.min(prev + cols, TILES.length - 1);
+        // bottom row is idx 6 (voice) and 7 (terminal) — treat as row 2 col 0 and col 1
+        if (prev >= 6) return prev; // already in bottom
+        if (prev <= 2) return prev === 0 ? 6 : 7; // clock→voice, weather/nowplaying→terminal
+        // row 1 (3,4,5) → voice=6, terminal=7, rss stays at 6 from col 2
+        const bottomTarget = prev === 3 ? 6 : prev === 4 ? 7 : 7;
+        return Math.min(bottomTarget, TILES.length - 1);
       }
-      if (dir === 'up')    return Math.max(prev - cols, 0);
+      if (dir === 'up') {
+        if (prev === 6) return 3; // voice → chores
+        if (prev === 7) return 5; // terminal → rss
+        return Math.max(prev - cols, 0);
+      }
       return prev;
     });
+  }, []);
+
+  // ── Widget-mode callbacks — declared before any hook that references them ──
+  const getTileFocusables = useCallback(() => {
+    const tile = document.querySelector(`[data-tile="${TILES[focusIdx]}"]`);
+    if (!tile) return [];
+    return Array.from(
+      tile.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href], textarea, select, [tabindex="0"]')
+    ).filter(el => el.offsetParent !== null);
+  }, [focusIdx]);
+
+  const enterWidget = useCallback(() => {
+    setWidgetMode(true);
+    setTimeout(() => {
+      const els = getTileFocusables();
+      if (els.length) { els[0].focus(); els[0].scrollIntoView({ block: 'nearest' }); }
+    }, 60);
+  }, [getTileFocusables]);
+
+  const exitWidget = useCallback(() => {
+    setWidgetMode(false);
+    document.activeElement?.blur();
+  }, []);
+
+  const widgetStep = useCallback((dir) => {
+    const els = getTileFocusables();
+    if (!els.length) return;
+    const cur  = els.indexOf(document.activeElement);
+    const next = dir === 'next'
+      ? Math.min(cur < 0 ? 0 : cur + 1, els.length - 1)
+      : Math.max(cur <= 0 ? 0 : cur - 1, 0);
+    els[next].focus();
+    els[next].scrollIntoView({ block: 'nearest' });
+  }, [getTileFocusables]);
+
+  const widgetActivate = useCallback(() => {
+    const el = document.activeElement;
+    if (!el) return;
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    } else {
+      el.click();
+    }
   }, []);
 
   useEffect(() => {
@@ -113,51 +165,6 @@ export default function App() {
     setAdminPwd('');
   };
 
-  // ── Widget-mode: generic D-pad navigation within focused tile ──────────────
-  // Returns all keyboard-reachable elements inside the currently focused tile
-  const getTileFocusables = useCallback(() => {
-    const tile = document.querySelector(`[data-tile="${TILES[focusIdx]}"]`);
-    if (!tile) return [];
-    return Array.from(
-      tile.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href], textarea, select, [tabindex="0"]')
-    ).filter(el => el.offsetParent !== null);  // skip hidden
-  }, [focusIdx]);
-
-  const enterWidget = useCallback(() => {
-    setWidgetMode(true);
-    // Small delay so cec:select tile handlers (e.g. open form) run first
-    setTimeout(() => {
-      const els = getTileFocusables();
-      if (els.length) { els[0].focus(); els[0].scrollIntoView({ block: 'nearest' }); }
-    }, 60);
-  }, [getTileFocusables]);
-
-  const exitWidget = useCallback(() => {
-    setWidgetMode(false);
-    document.activeElement?.blur();
-  }, []);
-
-  const widgetStep = useCallback((dir) => {
-    const els = getTileFocusables();
-    if (!els.length) return;
-    const cur  = els.indexOf(document.activeElement);
-    const next = dir === 'next'
-      ? Math.min(cur < 0 ? 0 : cur + 1, els.length - 1)
-      : Math.max(cur <= 0 ? 0 : cur - 1, 0);
-    els[next].focus();
-    els[next].scrollIntoView({ block: 'nearest' });
-  }, [getTileFocusables]);
-
-  const widgetActivate = useCallback(() => {
-    const el = document.activeElement;
-    if (!el) return;
-    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-      el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    } else {
-      el.click();
-    }
-  }, []);
-
   const openAdmin  = () => setShowLogin(true);
   const openRemote = () => window.open(`${window.location.protocol}//${window.location.hostname}:3001/remote`, '_blank');
 
@@ -184,6 +191,7 @@ export default function App() {
               {name === 'calendar'   && <CalendarWidget   focused={focusIdx === 4} />}
               {name === 'rss'        && <RssWidget        focused={focusIdx === 5} />}
               {name === 'voice'      && <VoiceAssistant   focused={focusIdx === 6} />}
+              {name === 'terminal'   && <TerminalWidget    focused={focusIdx === 7} />}
             </div>
           ))}
         </div>
@@ -222,16 +230,16 @@ export default function App() {
 
         .app-grid {
           flex: 1; display: grid;
-          grid-template-columns: 1fr 1.4fr 0.9fr;
+          grid-template-columns: 1fr 1.15fr 0.9fr;
           grid-template-rows: 1fr 1.4fr minmax(90px, 0.6fr);
           grid-template-areas:
             "clock weather nowplaying"
             "chores calendar rss"
-            "voice voice voice";
+            "voice terminal terminal";
           gap: 14px; padding: 14px; min-width: 0; min-height: 0;
         }
 
-        .grid-area-clock, .grid-area-weather, .grid-area-nowplaying, .grid-area-chores, .grid-area-calendar, .grid-area-rss, .grid-area-voice { min-height: 0; min-width: 0; overflow: hidden; }
+        .grid-area-clock, .grid-area-weather, .grid-area-nowplaying, .grid-area-chores, .grid-area-calendar, .grid-area-rss, .grid-area-voice, .grid-area-terminal { min-height: 0; min-width: 0; overflow: hidden; }
         .grid-area-clock      { grid-area: clock; }
         .grid-area-weather    { grid-area: weather; }
         .grid-area-nowplaying { grid-area: nowplaying; }
@@ -239,15 +247,16 @@ export default function App() {
         .grid-area-calendar   { grid-area: calendar; }
         .grid-area-rss        { grid-area: rss; }
         .grid-area-voice      { grid-area: voice; }
+        .grid-area-terminal   { grid-area: terminal; }
 
-        .grid-area-clock > *, .grid-area-weather > *, .grid-area-nowplaying > *, .grid-area-chores > *, .grid-area-calendar > *, .grid-area-rss > *, .grid-area-voice > * { height: 100%; }
+        .grid-area-clock > *, .grid-area-weather > *, .grid-area-nowplaying > *, .grid-area-chores > *, .grid-area-calendar > *, .grid-area-rss > *, .grid-area-voice > *, .grid-area-terminal > * { height: 100%; }
         .grid-area-voice .tile { padding: 14px 20px; }
 
         @media (max-width: 768px) {
           .shell { flex-direction: column; height: auto; min-height: 100vh; overflow-x: hidden; overflow-y: auto; }
           .sidebar { flex-direction: row; width: 100%; height: 48px; justify-content: flex-end; padding: 0 12px; border-right: none; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--void); z-index: 200; }
           .app-grid { display: flex; flex-direction: column; height: auto; width: 100%; max-width: 100%; overflow-x: hidden; gap: 10px; padding: 10px; }
-          .grid-area-clock > *, .grid-area-weather > *, .grid-area-nowplaying > *, .grid-area-chores > *, .grid-area-calendar > *, .grid-area-rss > *, .grid-area-voice > * { height: auto; }
+          .grid-area-clock > *, .grid-area-weather > *, .grid-area-nowplaying > *, .grid-area-chores > *, .grid-area-calendar > *, .grid-area-rss > *, .grid-area-voice > *, .grid-area-terminal > * { height: auto; }
           .clock-tile { flex-direction: row !important; align-items: center; gap: 12px; }
           .clock-date { margin-top: 0 !important; }
         }

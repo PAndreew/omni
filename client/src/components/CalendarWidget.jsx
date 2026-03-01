@@ -76,27 +76,29 @@ export default function CalendarWidget({ focused }) {
           {isSelectedToday ? 'Today' : format(selectedDay, 'MMM d')}
           {selectedEvents.length > 0 && <span style={{ color: 'var(--silver-light)', marginLeft: 6 }}>{selectedEvents.length}</span>}
         </div>
-        {selectedEvents.length > 0 ? selectedEvents.map(ev => (
-          <div key={ev.id} className="glass cal-event">
-            <span className="cal-event-dot" style={{ background: ev.color || 'var(--silver)' }} />
-            <span className="cal-event-title">{ev.title}</span>
-            <span className="cal-event-time">
-              {ev.all_day || !ev.start_time.includes('T') ? 'All day' : format(parseISO(ev.start_time), 'h:mm a')}
-            </span>
-          </div>
-        )) : (
-          <div style={{ fontSize: 14, color: 'var(--text-muted)', padding: '6px 0' }}>No events</div>
-        )}
+        <div className="cal-events-list">
+          {selectedEvents.length > 0 ? selectedEvents.map(ev => (
+            <div key={ev.id} className="glass cal-event">
+              <span className="cal-event-dot" style={{ background: ev.color || 'var(--silver)' }} />
+              <span className="cal-event-title">{ev.title}</span>
+              <span className="cal-event-time">
+                {ev.all_day || !ev.start_time.includes('T') ? 'All day' : format(parseISO(ev.start_time), 'h:mm a')}
+              </span>
+            </div>
+          )) : (
+            <div style={{ fontSize: 14, color: 'var(--text-muted)', padding: '6px 0' }}>No events</div>
+          )}
+        </div>
       </div>
 
       <style>{`
-        .cal-tile { display: flex; flex-direction: column; gap: 12px; }
-        .cal-header { display: flex; justify-content: space-between; align-items: center; }
-        .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-        .cal-dow  { text-align: center; font-size: 13px; letter-spacing: 0.08em; color: var(--text-dim);
-                    text-transform: uppercase; padding: 4px 0; }
+        .cal-tile { display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+        .cal-header { display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; flex-shrink: 0; }
+        .cal-dow  { text-align: center; font-size: 11px; letter-spacing: 0.08em; color: var(--text-dim);
+                    text-transform: uppercase; padding: 3px 0; }
         .cal-day  { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center;
-                    justify-content: center; border-radius: 0; font-size: 16px;
+                    justify-content: center; border-radius: 0; font-size: 13px;
                     font-family: 'Satoshi', sans-serif; cursor: pointer; position: relative;
                     color: var(--text-dim); transition: background 0.15s; }
         .cal-day:hover { background: rgba(255,255,255,0.04); }
@@ -104,23 +106,26 @@ export default function CalendarWidget({ focused }) {
         .cal-day.has-events { color: var(--text); }
         .cal-day.selected { background: rgba(176,176,176,0.1); outline: 1px solid var(--silver); }
         .cal-day.selected.today { background: rgba(176,176,176,0.14); outline: 1px solid var(--silver-light); }
-        .cal-selected-label { font-size: 13px; font-weight: 600; letter-spacing: 0.1em;
-                              text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; }
-        .cal-dots { display: flex; gap: 2px; margin-top: 3px; }
-        .cal-dot  { width: 5px; height: 5px; border-radius: 50%; }
-        .cal-today-events { display: flex; flex-direction: column; gap: 4px; }
-        .cal-event { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+        .cal-selected-label { font-size: 12px; font-weight: 600; letter-spacing: 0.1em;
+                              text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; flex-shrink: 0; }
+        .cal-dots { display: flex; gap: 2px; margin-top: 2px; }
+        .cal-dot  { width: 4px; height: 4px; border-radius: 50%; }
+        .cal-today-events { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+        .cal-events-list  { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; flex: 1; min-height: 0; }
+        .cal-events-list::-webkit-scrollbar { width: 3px; }
+        .cal-events-list::-webkit-scrollbar-thumb { background: var(--border); }
+        .cal-event { display: flex; align-items: center; gap: 8px; padding: 7px 10px; flex-shrink: 0; }
         .cal-event-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-        .cal-event-title { font-size: 15px; }
-        .cal-event-time  { font-size: 13px; color: var(--text-dim); margin-left: auto; white-space: nowrap; }
-        .cal-month-label { font-size: 16px; font-weight: 600; }
+        .cal-event-title { font-size: 13px; }
+        .cal-event-time  { font-size: 11px; color: var(--text-dim); margin-left: auto; white-space: nowrap; }
+        .cal-month-label { font-size: 14px; font-weight: 600; }
         @media (max-width: 768px) {
-          .cal-dow  { font-size: 12px; }
-          .cal-day  { font-size: 15px; }
-          .cal-dot  { width: 5px; height: 5px; }
-          .cal-event-title { font-size: 14px; }
-          .cal-event-time  { font-size: 13px; }
-          .cal-month-label { font-size: 16px; }
+          .cal-dow  { font-size: 11px; }
+          .cal-day  { font-size: 13px; }
+          .cal-dot  { width: 4px; height: 4px; }
+          .cal-event-title { font-size: 13px; }
+          .cal-event-time  { font-size: 11px; }
+          .cal-month-label { font-size: 14px; }
         }
       `}</style>
     </div>
