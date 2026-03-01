@@ -3,6 +3,7 @@
 # Usage:
 #   ./start.sh          → bare-metal dev mode (server + vite)
 #   ./start.sh prod     → bare-metal production (build client, run server)
+#   ./start.sh deploy   → rebuild client + restart server + restart kiosk (TV)
 #   ./start.sh docker   → build & run via docker-compose
 #   ./start.sh docker-build → rebuild Docker image
 
@@ -39,8 +40,24 @@ case "$MODE" in
     echo "  ✅  Image rebuilt. Run './start.sh docker' to start."
     ;;
 
+  deploy)
+    echo "  Building frontend..."
+    cd client && bun run build && cd ..
+    echo "  Restarting server..."
+    systemctl --user restart omniwall-server.service
+    # Wait for server to accept connections
+    for i in $(seq 1 20); do
+      curl -sf http://localhost:3001/api/weather > /dev/null && break
+      sleep 1
+    done
+    echo "  Restarting kiosk browser..."
+    systemctl --user restart omniwall-kiosk.service
+    echo ""
+    echo "  Done. Kiosk will reload — DSI-2 will be killed in ~8s after it starts."
+    ;;
+
   prod)
-    echo "🏗️  Building frontend..."
+    echo "  Building frontend..."
     cd client && bun install --frozen-lockfile 2>/dev/null || bun install
     bun run build
     cd ..

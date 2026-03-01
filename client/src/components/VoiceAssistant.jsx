@@ -98,19 +98,31 @@ export default function VoiceAssistant({ focused }) {
       </div>
 
       <style>{`
-        .voice-tile  { display: flex; flex-direction: column; gap: 10px; }
-        .voice-inner { display: flex; align-items: center; gap: 16px; }
-        .voice-text  { flex: 1; }
-        .voice-status { font-size: 13px; }
-        .voice-hint  { font-size: 10px; color: var(--text-muted); letter-spacing: 0.05em; }
+        .voice-tile  { display: flex; flex-direction: column; justify-content: center;
+                       gap: 8px; overflow: hidden; }
+        .voice-inner { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+        .voice-text  { flex: 1; min-width: 0; overflow: hidden; }
+        .voice-status { font-size: clamp(11px, 1.2vh, 13px);
+                        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .voice-hint  { font-size: clamp(9px, 1vh, 10px); color: var(--text-muted);
+                       letter-spacing: 0.04em; line-height: 1.5;
+                       overflow: hidden; display: -webkit-box;
+                       -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
         .voice-hint em { color: var(--text-dim); font-style: normal; }
-        .voice-btn   { position: relative; width: 52px; height: 52px; border-radius: 50%;
+        .voice-btn   { position: relative;
+                       width: clamp(38px, 4.5vh, 52px); height: clamp(38px, 4.5vh, 52px);
+                       border-radius: 50%;
                        background: var(--surface-2); border: 1.5px solid var(--border);
                        display: flex; align-items: center; justify-content: center; cursor: pointer;
                        transition: all 0.3s; flex-shrink: 0; }
         .voice-btn.active { border-color: var(--silver); box-shadow: 0 0 12px rgba(176,176,176,0.15); }
         @keyframes spin { to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }
+        /* Mobile: compact horizontal strip */
+        @media (max-width: 768px) {
+          .voice-tile { padding: 14px 16px; gap: 0; }
+          .voice-hint { display: none; }
+        }
       `}</style>
     </div>
   );

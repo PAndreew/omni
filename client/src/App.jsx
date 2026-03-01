@@ -190,7 +190,7 @@ export default function App() {
           flex: 1;
           display: grid;
           grid-template-columns: 1fr 1.4fr 0.9fr;
-          grid-template-rows: 1fr 1.4fr 0.55fr;
+          grid-template-rows: 1fr 1.4fr minmax(90px, 0.6fr);
           grid-template-areas:
             "clock weather nowplaying"
             "chores calendar nowplaying"
@@ -198,6 +198,17 @@ export default function App() {
           gap: 14px;
           padding: 14px;
           min-width: 0;
+          min-height: 0;
+        }
+        .grid-area-clock,
+        .grid-area-weather,
+        .grid-area-nowplaying,
+        .grid-area-chores,
+        .grid-area-calendar,
+        .grid-area-voice {
+          min-height: 0;
+          min-width: 0;
+          overflow: hidden;
         }
         .grid-area-clock      { grid-area: clock; }
         .grid-area-weather    { grid-area: weather; }
@@ -212,6 +223,8 @@ export default function App() {
         .grid-area-chores > *,
         .grid-area-calendar > *,
         .grid-area-voice > * { height: 100%; }
+        /* Voice row is shorter — reduce its internal padding */
+        .grid-area-voice .tile { padding: 14px 20px; }
 
         /* ── Mobile layout ──────────────────────────────────── */
         @media (max-width: 768px) {
@@ -260,8 +273,7 @@ export default function App() {
           .clock-tile { flex-direction: row !important; align-items: center; gap: 12px; }
           .clock-date { margin-top: 0 !important; }
 
-          .voice-hint { display: none; }
-          .chore-list { max-height: 220px; }
+            .chore-list { max-height: 220px; }
         }
 
         /* ── Modal ──────────────────────────────────────────── */
