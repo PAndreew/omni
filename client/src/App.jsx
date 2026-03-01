@@ -125,7 +125,11 @@ export default function App() {
   useSocket('cec:down',   () => { if (!cecKeyboardOpen) { if (widgetMode) widgetStep('next'); else navigate('down'); } });
   useSocket('cec:up',     () => { if (!cecKeyboardOpen) { if (widgetMode) widgetStep('prev'); else navigate('up'); } });
   useSocket('cec:select', () => { if (!cecKeyboardOpen) { if (widgetMode) widgetActivate(); else enterWidget(); } });
-  useSocket('cec:back',   () => { if (widgetMode) exitWidget(); });
+  useSocket('cec:back',   () => {
+    if (showLogin) setShowLogin(false);
+    else if (showSettings) setShowSettings(false);
+    else if (widgetMode) exitWidget();
+  });
 
   // Remote text relay — inject into whichever <input>/<textarea> is focused on the kiosk
   useSocket('remote:type', (text) => {

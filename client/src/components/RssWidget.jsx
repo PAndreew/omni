@@ -36,6 +36,12 @@ export default function RssWidget({ focused }) {
     if (focused && !showAddForm && !selectedItem) setShowAddForm(true);
   });
 
+  // Handle back button from remote to close modal or form
+  useSocket('cec:back', () => {
+    if (selectedItem) setSelectedItem(null);
+    else if (showAddForm) setShowAddForm(false);
+  });
+
   const addFeed = async () => {
     if (!addForm.name.trim() || !addForm.url.trim()) return;
     setAddMsg('Adding…');

@@ -50,6 +50,12 @@ export default function NowPlaying({ focused }) {
   useSocket('cec:up',   () => { if (focused && showSearch && !showKeyboard && searchResults.length) setResultIdx(i => Math.max(0, i - 1)); });
   useSocket('cec:down', () => { if (focused && showSearch && !showKeyboard && searchResults.length) setResultIdx(i => Math.min(searchResults.length - 1, i + 1)); });
 
+  useSocket('cec:back', () => {
+    if (discoMode) setDiscoMode(false);
+    else if (showKeyboard) setShowKeyboard(false);
+    else if (showSearch) setShowSearch(false);
+  });
+
   const command = (cmd) => fetch(`/api/audio/${cmd}`, { method: 'POST' });
 
   const doSearch = useCallback(async (q) => {
