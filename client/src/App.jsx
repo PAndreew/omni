@@ -66,7 +66,11 @@ export default function App() {
     if (!tile) return [];
     return Array.from(
       tile.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href], textarea, select, [tabindex="0"]')
-    ).filter(el => el.offsetParent !== null);
+    ).filter(el => {
+      // Check if it's visible or has a focusable tabindex
+      const style = window.getComputedStyle(el);
+      return style.display !== 'none' && style.visibility !== 'hidden';
+    });
   }, [focusIdx]);
 
   const enterWidget = useCallback(() => {
@@ -231,7 +235,7 @@ export default function App() {
         .app-grid {
           flex: 1; display: grid;
           grid-template-columns: 1fr 1.15fr 0.9fr;
-          grid-template-rows: 1fr 1.4fr minmax(90px, 0.6fr);
+          grid-template-rows: 1fr 2.2fr minmax(60px, 0.4fr);
           grid-template-areas:
             "clock weather nowplaying"
             "chores calendar rss"
@@ -270,9 +274,12 @@ export default function App() {
         .widget-active textarea:focus,
         .widget-active a:focus,
         .widget-active [tabindex="0"]:focus {
-          outline: 1px solid var(--silver);
-          outline-offset: 2px;
+          outline: 2px solid var(--silver-light) !important;
+          outline-offset: -2px;
+          box-shadow: 0 0 15px rgba(255,255,255,0.1);
         }
+        /* Ensure delete buttons are visible when focused in widget mode */
+        .widget-active .chore-delete:focus { opacity: 1 !important; color: var(--red); }
       `}</style>
     </>
   );

@@ -20,8 +20,9 @@ export default function ChoreList({ focused }) {
     loadChores();
   }, [loadChores]);
 
-  // CEC: OK on focused Chores tile → open keyboard to add a chore
-  useSocket('cec:select', () => { if (focused && !showKeyboard) setShowKeyboard(true); });
+  // Remove the automatic CEC keyboard trigger on select. 
+  // Let App.jsx's widget-mode handle entering/navigating/clicking.
+  // useSocket('cec:select', () => { if (focused && !showKeyboard) setShowKeyboard(true); });
 
   useSocket('chore:added',   (c) => setChores(prev => prev.some(x => x.id === c.id) ? prev : [c, ...prev]));
   useSocket('chore:updated', (c) => setChores(prev => prev.map(x => x.id === c.id ? c : x)));
@@ -122,7 +123,7 @@ export default function ChoreList({ focused }) {
                       background: var(--surface-2); border: 1px solid var(--border);
                       transition: all 0.2s; user-select: none; }
         .chore-item:hover { border-color: #333; }
-        .chore-item:hover .chore-delete { opacity: 1; }
+        .chore-item:hover .chore-delete, .chore-item:focus-within .chore-delete { opacity: 1; }
         .chore-item.done  { opacity: 0.35; }
         .chore-item.pulsing { animation: chromatic-pulse 0.8s ease; }
         .chore-check { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--border);
