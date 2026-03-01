@@ -10,7 +10,7 @@ import CalendarWidget from './components/CalendarWidget.jsx';
 import VoiceAssistant from './components/VoiceAssistant.jsx';
 import NotificationManager from './components/Notifications.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
-import { useSocket } from './hooks/useSocket.js';
+import { useSocket, getSocket } from './hooks/useSocket.js';
 
 const TILES = ['clock', 'weather', 'nowplaying', 'chores', 'calendar', 'voice'];
 
@@ -59,10 +59,7 @@ export default function App() {
   useSocket('cec:left',   () => { if (!cecKeyboardOpen) navigate('left'); });
   useSocket('cec:down',   () => { if (!cecKeyboardOpen) navigate('down'); });
   useSocket('cec:up',     () => { if (!cecKeyboardOpen) navigate('up'); });
-  useSocket('cec:select', () => {
-    if (!cecKeyboardOpen)
-      document.querySelector(`[data-tile="${TILES[focusIdx]}"]`)?.click();
-  });
+  // cec:select is handled directly by each focused tile via useSocket('cec:select')
 
   // PlayStation / Xbox gamepad navigation
   useGamepad({
@@ -70,7 +67,7 @@ export default function App() {
     onDown:    () => { if (!cecKeyboardOpen) navigate('down'); },
     onLeft:    () => { if (!cecKeyboardOpen) navigate('left'); },
     onRight:   () => { if (!cecKeyboardOpen) navigate('right'); },
-    onSelect:  () => { if (!cecKeyboardOpen) document.querySelector(`[data-tile="${TILES[focusIdx]}"]`)?.click(); },
+    onSelect:  () => { if (!cecKeyboardOpen) getSocket().emit('cec:select'); },
     onOptions: () => openAdmin(),
   });
 

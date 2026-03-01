@@ -81,6 +81,9 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => console.log(`[WS] Client disconnected: ${socket.id}`));
 
+  // Gamepad / client can emit cec:select and we broadcast to all clients (same as CEC hardware)
+  socket.on('cec:select', () => io.emit('cec:select'));
+
   // CEC commands from frontend (for admin mode)
   socket.on('cec:cmd', ({ cmd }) => {
     if (cmd === 'standby') {
