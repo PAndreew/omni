@@ -69,9 +69,6 @@ export default function App() {
     ).filter(el => {
       const style = window.getComputedStyle(el);
       if (style.display === 'none' || style.visibility === 'hidden') return false;
-      // Exclude xterm hidden textareas — terminal typing is handled by remote:type → PTY
-      if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) return false;
-      if (el.classList?.contains('xterm-helper-textarea')) return false;
       return true;
     });
   }, [focusIdx]);
@@ -114,6 +111,10 @@ export default function App() {
     const handler = (e) => {
       const map = { ArrowRight:'right', ArrowLeft:'left', ArrowDown:'down', ArrowUp:'up' };
       if (map[e.key]) {
+        // Don't intercept arrow keys if we are typing in a terminal
+        const isTerm = document.activeElement?.dataset?.termSessionId || document.activeElement?.classList.contains('xterm-helper-textarea');
+        if (isTerm) return;
+
         e.preventDefault();
         if (!widgetMode) navigate(map[e.key]);
       }

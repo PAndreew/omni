@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Terminal as TermIcon, Plus, X } from 'lucide-react';
 import { getSocket } from '../hooks/useSocket.js';
 
-let sessionCounter = 0;
+let sessionCounter = Date.now() % 100000;
 
 function Session({ id, active, onClose, onActivate }) {
   const containerRef = useRef(null);
@@ -116,6 +116,7 @@ function Session({ id, active, onClose, onActivate }) {
     <div
       style={{ display: active ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}
       onClick={onActivate}
+      data-session-id={id}
     >
       <div ref={containerRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }} />
     </div>
@@ -132,17 +133,18 @@ export default function TerminalWidget({ focused }) {
     if (!root) return;
 
     const tryFocus = (attempt = 0) => {
-      const ta = root.querySelector(`textarea[data-term-session-id="${sessionId}"]`)
-        || root.querySelector('.xterm-helper-textarea')
-        || root.querySelector('textarea[data-term-session-id]');
+      // Be very specific: find the textarea inside the session's container
+      const ta = root.querySelector(`div[data-session-id="${sessionId}"] textarea`);
 
       if (ta) {
         ta.focus();
+        // Fallback for some browsers
+        if (document.activeElement !== ta) ta.focus();
         return;
       }
 
       // xterm is lazy-loaded from CDN, so it may not be ready immediately.
-      if (attempt < 20) setTimeout(() => tryFocus(attempt + 1), 50);
+      if (attempt < 30) setTimeout(() => tryFocus(attempt + 1), 50);
     };
 
     tryFocus();
@@ -152,11 +154,19 @@ export default function TerminalWidget({ focused }) {
     focusTerminalFor(activeId);
   }, [activeId, focusTerminalFor]);
 
+  // Auto-focus when widget becomes active or session changes
+  useEffect(() => {
+    if (focused) {
+      focusActiveTerminal();
+    }
+  }, [focused, activeId, focusActiveTerminal]);
+
   const newSession = useCallback(() => {
     const id = `term-${++sessionCounter}`;
     setSessions(prev => [...prev, { id }]);
     setActiveId(id);
-  }, []);
+    setTimeout(() => focusTerminalFor(id), 100);
+  }, [focusTerminalFor]);
 
   const closeSession = useCallback((id) => {
     setSessions(prev => {
