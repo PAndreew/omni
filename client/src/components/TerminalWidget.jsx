@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Terminal as TermIcon, Plus, X } from 'lucide-react';
 import { getSocket } from '../hooks/useSocket.js';
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import '@xterm/xterm/css/xterm.css';
 
 let sessionCounter = Date.now() % 100000;
 
@@ -11,84 +14,73 @@ function Session({ id, active, onClose, onActivate }) {
   const socketRef    = useRef(null);
   const handlersRef  = useRef({});    // named handlers so we can remove them specifically
 
-  // Lazy-load xterm from CDN (no npm dep needed in client)
   useEffect(() => {
     if (!containerRef.current) return;
-    let destroyed = false;
+    
+    const term = new Terminal({
+      cursorBlink: true,
+      fontFamily: '"JetBrains Mono", "Fira Mono", monospace',
+      fontSize: 13,
+      lineHeight: 1.3,
+      theme: {
+        background:  '#000000',
+        foreground:  '#cccccc',
+        cursor:      '#909090',
+        black:       '#000000',
+        brightBlack: '#525252',
+        white:       '#cccccc',
+        brightWhite: '#ffffff',
+        blue:        '#5c9cf5',
+        green:       '#3dba6e',
+        red:         '#e06c75',
+        yellow:      '#d4a85a',
+        cyan:        '#56b6c2',
+        magenta:     '#c678dd',
+      },
+      allowProposedApi: true,
+      scrollback: 2000,
+    });
 
-    async function init() {
-      // Import xterm from the global (loaded via CDN in index.html)
-      const { Terminal } = await import('https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/+esm');
-      const { FitAddon } = await import('https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/+esm');
+    const fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(containerRef.current);
+    fitAddon.fit();
 
-      if (destroyed) return;
+    // Tag xterm's hidden textarea with the session id so App.jsx can
+    // route remote text input to the correct PTY session.
+    try {
+      const ta = containerRef.current.querySelector('textarea');
+      if (ta) {
+        ta.dataset.termSessionId = id;
+      }
+    } catch {}
 
-      const term = new Terminal({
-        cursorBlink: true,
-        fontFamily: '"JetBrains Mono", "Fira Mono", monospace',
-        fontSize: 13,
-        lineHeight: 1.3,
-        theme: {
-          background:  '#000000',
-          foreground:  '#cccccc',
-          cursor:      '#909090',
-          black:       '#000000',
-          brightBlack: '#525252',
-          white:       '#cccccc',
-          brightWhite: '#ffffff',
-          blue:        '#5c9cf5',
-          green:       '#3dba6e',
-          red:         '#e06c75',
-          yellow:      '#d4a85a',
-          cyan:        '#56b6c2',
-          magenta:     '#c678dd',
-        },
-        allowProposedApi: true,
-        scrollback: 2000,
-      });
+    termRef.current = term;
+    fitRef.current  = fitAddon;
 
-      const fitAddon = new FitAddon();
-      term.loadAddon(fitAddon);
-      term.open(containerRef.current);
-      fitAddon.fit();
+    // Open PTY session on server
+    const socket = getSocket();
+    socketRef.current = socket;
+    socket.emit('term:open', { id, cols: term.cols, rows: term.rows });
 
-      // Tag xterm's hidden textarea with the session id so App.jsx can
-      // route remote text input to the correct PTY session.
-      try {
-        const ta = containerRef.current.querySelector('textarea');
-        if (ta) {
-          ta.dataset.termSessionId = id;
-        }
-      } catch {}
+    // Server → terminal — store refs so cleanup removes only this session's listeners
+    const onData = ({ id: sid, data }) => { if (sid === id) term.write(data); };
+    const onClosed = ({ id: sid }) => {
+      if (sid === id) term.write('\r\n\x1b[31m[session closed]\x1b[0m\r\n');
+    };
+    handlersRef.current = { onData, onClosed };
+    socket.on('term:data',   onData);
+    socket.on('term:closed', onClosed);
 
-      termRef.current = term;
-      fitRef.current  = fitAddon;
+    // Terminal → server
+    term.onData(data => socket.emit('term:input', { id, data }));
 
-      // Open PTY session on server
-      const socket = getSocket();
-      socketRef.current = socket;
-      socket.emit('term:open', { id, cols: term.cols, rows: term.rows });
+    // Resize
+    term.onResize(({ cols, rows }) => socket.emit('term:resize', { id, cols, rows }));
 
-      // Server → terminal — store refs so cleanup removes only this session's listeners
-      const onData = ({ id: sid, data }) => { if (sid === id) term.write(data); };
-      const onClosed = ({ id: sid }) => {
-        if (sid === id) term.write('\r\n\x1b[31m[session closed]\x1b[0m\r\n');
-      };
-      handlersRef.current = { onData, onClosed };
-      socket.on('term:data',   onData);
-      socket.on('term:closed', onClosed);
-
-      // Terminal → server
-      term.onData(data => socket.emit('term:input', { id, data }));
-
-      // Resize
-      term.onResize(({ cols, rows }) => socket.emit('term:resize', { id, cols, rows }));
-    }
-
-    init();
     return () => {
-      destroyed = true;
-      if (termRef.current) { termRef.current.dispose(); termRef.current = null; }
+      term.dispose();
+      termRef.current = null;
       if (socketRef.current) {
         socketRef.current.emit('term:close', { id });
         socketRef.current.off('term:data',   handlersRef.current.onData);

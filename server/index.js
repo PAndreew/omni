@@ -85,26 +85,44 @@ const ptySessions = {};   // sessionId → pty process
 function spawnPty(id, cols, rows, socket) {
   if (ptySessions[id]) return;
   const shell = process.env.SHELL || '/bin/bash';
-  const proc = pty.spawn(shell, [], {
-    name: 'xterm-256color',
-    cols: cols || 80,
-    rows: rows || 24,
-    cwd: process.env.HOME || '/home/pi',
-    env: { ...process.env, TERM: 'xterm-256color' },
-  });
-  proc._socketId = socket.id;   // track owner for cleanup on disconnect
-  ptySessions[id] = proc;
+  console.log(`[PTY] Spawning ${shell} for session ${id} (${cols}x${rows})`);
+  
+  try {
+    const proc = pty.spawn(shell, [], {
+      name: 'xterm-256color',
+      cols: cols || 80,
+      rows: rows || 24,
+      cwd: process.env.HOME || '/home/pi',
+      env: { ...process.env, TERM: 'xterm-256color' },
+    });
+    proc._socketId = socket.id;   // track owner for cleanup on disconnect
+    ptySessions[id] = proc;
 
-  proc.onData(data => socket.emit('term:data', { id, data }));
-  proc.onExit(() => {
-    delete ptySessions[id];
-    socket.emit('term:closed', { id });
-  });
+    proc.onData(data => socket.emit('term:data', { id, data }));
+    proc.onExit(({ exitCode, signal }) => {
+      console.log(`[PTY] Session ${id} exited with code ${exitCode}, signal ${signal}`);
+      delete ptySessions[id];
+      if (socket.connected) {
+        socket.emit('term:closed', { id });
+      }
+    });
+  } catch (err) {
+    console.error(`[PTY] Failed to spawn PTY for ${id}:`, err);
+    socket.emit('term:data', { id, data: `\r\n\x1b[31m[failed to spawn shell: ${err.message}]\x1b[0m\r\n` });
+  }
 }
 
 // Socket.io
 io.on('connection', (socket) => {
   console.log(`[WS] Client connected: ${socket.id}`);
+  
+  // Debug all incoming events
+  socket.onAny((event, ...args) => {
+    if (!event.startsWith('audio:')) { // skip noisy audio updates
+       console.log(`[WS][${socket.id}] Event: ${event}`, JSON.stringify(args));
+    }
+  });
+
   const track = getCurrentTrack();
   if (track) socket.emit('audio:track', track);
 
@@ -129,7 +147,10 @@ io.on('connection', (socket) => {
   });
 
   // ── Terminal (PTY) sessions ──────────────────────────────────────────────
-  socket.on('term:open', ({ id, cols, rows }) => spawnPty(id, cols, rows, socket));
+  socket.on('term:open', ({ id, cols, rows }) => {
+    console.log(`[WS] term:open session=${id} cols=${cols} rows=${rows}`);
+    spawnPty(id, cols, rows, socket);
+  });
   socket.on('term:input',  ({ id, data }) => { if (ptySessions[id]) ptySessions[id].write(data); });
   socket.on('term:resize', ({ id, cols, rows }) => { if (ptySessions[id]) ptySessions[id].resize(cols, rows); });
   socket.on('term:close',  ({ id }) => {

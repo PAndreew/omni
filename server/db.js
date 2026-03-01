@@ -1,4 +1,4 @@
-import { Database } from 'bun:sqlite';
+import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { mkdirSync } from 'fs';
@@ -8,7 +8,7 @@ const dbPath = process.env.DB_PATH || path.join(__dirname, 'data', 'omniwall.db'
 
 mkdirSync(path.dirname(dbPath), { recursive: true });
 
-const db = new Database(dbPath, { create: true });
+const db = new Database(dbPath);
 
 db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
