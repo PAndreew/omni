@@ -25,7 +25,6 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [spotifyTab, setSpotifyTab]     = useState(false);
   const [widgetMode, setWidgetMode]     = useState(false);
-  const [termTabNav, setTermTabNav]     = useState(false);  // terminal widget: navigating tab bar vs body
 
   // Open settings on Spotify OAuth callback redirect
   useEffect(() => {
@@ -74,41 +73,16 @@ export default function App() {
     });
   }, [focusIdx]);
 
-  // ── Helpers for terminal widget ────────────────────────────────────────
-  const isTermWidget = useCallback(() => TILES[focusIdx] === 'terminal', [focusIdx]);
-
-  const getActiveTermId = useCallback(() => {
-    return document.querySelector('[data-active-term-id]')?.dataset.activeTermId || null;
-  }, []);
-
-  const focusActiveXterm = useCallback(() => {
-    const id = getActiveTermId();
-    if (!id) return;
-    const tryFocus = (attempt = 0) => {
-      const ta = document.querySelector(`textarea[data-term-session-id="${id}"]`)
-        || document.querySelector('.xterm-helper-textarea');
-      if (ta) { ta.focus(); return; }
-      if (attempt < 20) setTimeout(() => tryFocus(attempt + 1), 50);
-    };
-    tryFocus();
-  }, [getActiveTermId]);
-
   const enterWidget = useCallback(() => {
     setWidgetMode(true);
-    if (TILES[focusIdx] === 'terminal') {
-      setTermTabNav(false);
-      setTimeout(() => focusActiveXterm(), 60);
-      return;
-    }
     setTimeout(() => {
       const els = getTileFocusables();
       if (els.length) { els[0].focus(); els[0].scrollIntoView({ block: 'nearest' }); }
     }, 60);
-  }, [getTileFocusables, focusIdx, focusActiveXterm]);
+  }, [getTileFocusables]);
 
   const exitWidget = useCallback(() => {
     setWidgetMode(false);
-    setTermTabNav(false);
     document.activeElement?.blur();
   }, []);
 
@@ -120,12 +94,17 @@ export default function App() {
       ? Math.min(cur < 0 ? 0 : cur + 1, els.length - 1)
       : Math.max(cur <= 0 ? 0 : cur - 1, 0);
     els[next].focus();
-    els[next].scrollIntoView({ block: 'nearest' });
+    // Don't scroll xterm's hidden helper textarea into view
+    if (!els[next].classList?.contains('xterm-helper-textarea')) {
+      els[next].scrollIntoView({ block: 'nearest' });
+    }
   }, [getTileFocusables]);
 
   const widgetActivate = useCallback(() => {
     const el = document.activeElement;
     if (!el) return;
+    // xterm textarea: typing is handled by remote:type → PTY, skip Enter dispatch
+    if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) return;
     if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
       el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     } else {
@@ -146,68 +125,19 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [navigate, widgetMode, exitWidget]);
 
-  // ── CEC / D-pad handlers (terminal-aware) ──────────────────────────────
-  useSocket('cec:right', () => {
-    if (cecKeyboardOpen) return;
-    if (!widgetMode) { navigate('right'); return; }
-    if (isTermWidget() && !termTabNav) {
-      const id = getActiveTermId();
-      if (id) getSocket().emit('term:input', { id, data: '\x1b[C' });
-    } else { widgetStep('next'); }
-  });
-  useSocket('cec:left', () => {
-    if (cecKeyboardOpen) return;
-    if (!widgetMode) { navigate('left'); return; }
-    if (isTermWidget() && !termTabNav) {
-      const id = getActiveTermId();
-      if (id) getSocket().emit('term:input', { id, data: '\x1b[D' });
-    } else { widgetStep('prev'); }
-  });
-  useSocket('cec:down', () => {
-    if (cecKeyboardOpen) return;
-    if (!widgetMode) { navigate('down'); return; }
-    if (isTermWidget() && termTabNav) {
-      setTermTabNav(false);
-      focusActiveXterm();
-    } else if (!isTermWidget()) { widgetStep('next'); }
-  });
-  useSocket('cec:up', () => {
-    if (cecKeyboardOpen) return;
-    if (!widgetMode) { navigate('up'); return; }
-    if (isTermWidget() && !termTabNav) {
-      setTermTabNav(true);
-      const tile = document.querySelector('[data-tile="terminal"]');
-      const first = tile?.querySelector('.term-tab, .term-new-btn');
-      if (first) first.focus();
-    } else if (!isTermWidget()) { widgetStep('prev'); }
-  });
-  useSocket('cec:select', () => {
-    if (cecKeyboardOpen) return;
-    if (!widgetMode) { enterWidget(); return; }
-    if (isTermWidget() && termTabNav) {
-      widgetActivate();
-      // After clicking a tab or "+", return to terminal body
-      setTermTabNav(false);
-      setTimeout(() => focusActiveXterm(), 100);
-    } else if (!isTermWidget()) {
-      widgetActivate();
-    }
-    // In terminal body mode, select is a no-op (xterm handles input)
-  });
-  useSocket('cec:back', () => {
+  useSocket('cec:right',  () => { if (!cecKeyboardOpen) { if (widgetMode) widgetStep('next'); else navigate('right'); } });
+  useSocket('cec:left',   () => { if (!cecKeyboardOpen) { if (widgetMode) widgetStep('prev'); else navigate('left'); } });
+  useSocket('cec:down',   () => { if (!cecKeyboardOpen) { if (widgetMode) widgetStep('next'); else navigate('down'); } });
+  useSocket('cec:up',     () => { if (!cecKeyboardOpen) { if (widgetMode) widgetStep('prev'); else navigate('up'); } });
+  useSocket('cec:select', () => { if (!cecKeyboardOpen) { if (widgetMode) widgetActivate(); else enterWidget(); } });
+  useSocket('cec:back',   () => {
     if (showLogin) setShowLogin(false);
     else if (showSettings) setShowSettings(false);
-    else if (widgetMode && isTermWidget() && termTabNav) { setTermTabNav(false); focusActiveXterm(); }
     else if (widgetMode) exitWidget();
   });
 
-  // Remote text relay — inject into focused input, or into terminal PTY when active
+  // Remote text relay — route to focused element; if it's an xterm textarea, send to PTY
   useSocket('remote:type', (text) => {
-    // Always route to PTY when terminal widget is active
-    if (widgetMode && TILES[focusIdx] === 'terminal') {
-      const id = getActiveTermId();
-      if (id) { getSocket().emit('term:input', { id, data: text }); return; }
-    }
     const el = document.activeElement;
     if (!el) return;
     if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) {
@@ -220,10 +150,6 @@ export default function App() {
     el.dispatchEvent(new Event('input', { bubbles: true }));
   });
   useSocket('remote:backspace', () => {
-    if (widgetMode && TILES[focusIdx] === 'terminal') {
-      const id = getActiveTermId();
-      if (id) { getSocket().emit('term:input', { id, data: '\x7f' }); return; }
-    }
     const el = document.activeElement;
     if (!el) return;
     if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) {
@@ -236,10 +162,6 @@ export default function App() {
     el.dispatchEvent(new Event('input', { bubbles: true }));
   });
   useSocket('remote:enter', () => {
-    if (widgetMode && TILES[focusIdx] === 'terminal') {
-      const id = getActiveTermId();
-      if (id) { getSocket().emit('term:input', { id, data: '\r' }); return; }
-    }
     const el = document.activeElement;
     if (!el) return;
     if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) {
