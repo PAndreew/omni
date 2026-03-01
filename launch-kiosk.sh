@@ -12,6 +12,9 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
+# Force DSI-2 off before starting Chromium
+wlr-randr --output DSI-2 --off 2>/dev/null || true
+
 # Launch Chromium in X11 mode (reliable kiosk fullscreen via Xwayland)
 chromium-browser \
   --ozone-platform=x11 \
@@ -28,9 +31,10 @@ chromium-browser \
 
 CHROME_PID=$!
 
-# Wait for Chromium + Xwayland to fully initialise before touching outputs.
-# Wayfire re-evaluates outputs when Xwayland starts, which can re-enable DSI-2.
-sleep 8
-wlr-randr --output DSI-2 --off 2>/dev/null || true
+# Re-check and force DSI-2 off again after 10s (Xwayland startup can trigger re-enablement)
+(
+  sleep 10
+  wlr-randr --output DSI-2 --off 2>/dev/null || true
+) &
 
 wait $CHROME_PID
