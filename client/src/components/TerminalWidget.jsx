@@ -171,15 +171,7 @@ export default function TerminalWidget({ focused }) {
   }, []);
 
   return (
-    <div ref={rootRef} className={`tile term-tile ${focused ? 'focused' : ''}`}>
-      {/* Focus proxy: lets D-pad/CEC "enter" the terminal and lands focus into xterm */}
-      <div
-        className="term-focus-proxy"
-        tabIndex={0}
-        aria-label="Focus terminal"
-        onFocus={focusActiveTerminal}
-      />
-
+    <div ref={rootRef} className={`tile term-tile ${focused ? 'focused' : ''}`} data-active-term-id={activeId}>
       {/* Tab bar */}
       <div className="term-tabbar">
         <TermIcon size={13} strokeWidth={1.5} style={{ color: 'var(--text-dim)', flexShrink: 0 }} />
@@ -203,7 +195,7 @@ export default function TerminalWidget({ focused }) {
       </div>
 
       {/* Terminal panes */}
-      <div className="term-body" tabIndex={0} onFocus={focusActiveTerminal} onClick={focusActiveTerminal}>
+      <div className="term-body" onClick={focusActiveTerminal}>
         {sessions.map(s => (
           <Session
             key={s.id}
@@ -250,14 +242,6 @@ export default function TerminalWidget({ focused }) {
           flex: 1; min-height: 0; display: flex; flex-direction: column;
           padding: 4px 6px 4px 4px;
           background: #000;
-        }
-
-        .term-focus-proxy {
-          position: absolute;
-          width: 1px;
-          height: 1px;
-          opacity: 0;
-          pointer-events: none;
         }
 
         /* xterm overrides */
