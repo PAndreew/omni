@@ -179,7 +179,7 @@ export default function App() {
         .sidebar-btn {
           width: 36px; height: 36px;
           background: transparent; border: none;
-          color: var(--text-muted); cursor: pointer;
+          color: var(--silver); cursor: pointer;
           display: flex; align-items: center; justify-content: center;
           transition: color 0.2s;
         }

@@ -70,7 +70,7 @@ export default function VoiceAssistant({ focused }) {
           <MicIcon
             size={22}
             strokeWidth={1.5}
-            style={{ color: status === 'processing' ? 'var(--silver-light)' : status === 'speaking' ? 'var(--green)' : status !== 'idle' ? 'var(--silver)' : 'var(--text-dim)' }}
+            style={{ color: status === 'processing' ? 'var(--silver-light)' : status === 'speaking' ? 'var(--green)' : status !== 'idle' ? 'var(--silver)' : 'var(--silver)' }}
             className={status === 'processing' ? 'spin' : ''}
           />
         </button>
