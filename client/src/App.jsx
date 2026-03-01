@@ -64,6 +64,28 @@ export default function App() {
   useSocket('cec:down',   () => { if (!cecKeyboardOpen) navigate('down'); });
   useSocket('cec:up',     () => { if (!cecKeyboardOpen) navigate('up'); });
 
+  // Remote text relay — inject into whichever <input>/<textarea> is focused on the kiosk
+  useSocket('remote:type', (text) => {
+    const el = document.activeElement;
+    if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return;
+    const proto  = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+    setter.call(el, el.value + text);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  useSocket('remote:backspace', () => {
+    const el = document.activeElement;
+    if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return;
+    const proto  = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+    setter.call(el, el.value.slice(0, -1));
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  useSocket('remote:enter', () => {
+    const el = document.activeElement;
+    if (el) el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  });
+
   useGamepad({
     onUp:      () => { if (!cecKeyboardOpen) navigate('up'); },
     onDown:    () => { if (!cecKeyboardOpen) navigate('down'); },

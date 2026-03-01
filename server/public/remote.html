@@ -156,6 +156,32 @@
     }
     .action-btn.pressed { background: #1c1c1c; color: var(--silver-light); }
 
+    /* ─── Type bar ───────────────────────────────────── */
+    .type-row {
+      display: flex; gap: 8px;
+      width: 100%; max-width: 280px; align-items: center;
+    }
+    .type-input {
+      flex: 1; height: 50px;
+      background: var(--surface);
+      border: 1px solid var(--border); border-radius: 10px;
+      color: #fff; font-size: 15px;
+      padding: 0 14px; outline: none;
+      font-family: inherit; touch-action: pan-x;
+    }
+    .type-input:focus { border-color: #3a3a3a; }
+    .type-input::placeholder { color: #444; }
+    .type-btn {
+      width: 50px; height: 50px;
+      background: var(--surface);
+      border: 1px solid var(--border); border-radius: 10px;
+      color: var(--silver-light); font-size: 20px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; flex-shrink: 0;
+      touch-action: manipulation; transition: background 0.06s;
+    }
+    .type-btn.pressed { background: #1c1c1c; }
+
     /* ─── Media row ──────────────────────────────────── */
     .media-row {
       display: flex;
@@ -225,6 +251,15 @@
   <!-- Back button -->
   <div class="action-row">
     <button class="action-btn" data-event="cec:back" aria-label="Back">← Back</button>
+  </div>
+
+  <!-- Text input bar: type here, ↵ sends to focused kiosk input, ⌫ deletes last char -->
+  <div class="type-row">
+    <input class="type-input" id="type-input" type="text"
+           placeholder="Type into focused field…"
+           autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+    <button class="type-btn" id="bksp-btn" aria-label="Backspace">⌫</button>
+    <button class="type-btn" id="send-btn" aria-label="Send / Enter">↵</button>
   </div>
 
   <!-- Media controls -->
@@ -302,6 +337,35 @@
     btn.addEventListener('mousedown',  () => press());
     btn.addEventListener('mouseup',    () => release());
   });
+
+  // ─── Type bar ────────────────────────────────────────────────
+  const typeInput = document.getElementById('type-input');
+  const sendBtn   = document.getElementById('send-btn');
+  const bkspBtn   = document.getElementById('bksp-btn');
+
+  function sendText() {
+    const text = typeInput.value;
+    if (!text) {
+      // empty send = Enter key on the kiosk (submit form / confirm)
+      socket.emit('remote:enter');
+      return;
+    }
+    socket.emit('remote:type', text);
+    typeInput.value = '';
+  }
+
+  // Enter key on phone keyboard sends text
+  typeInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sendText(); } });
+
+  sendBtn.addEventListener('touchstart', e => { e.preventDefault(); sendBtn.classList.add('pressed'); sendText(); }, { passive: false });
+  sendBtn.addEventListener('touchend',   () => sendBtn.classList.remove('pressed'));
+  sendBtn.addEventListener('mousedown',  () => { sendBtn.classList.add('pressed'); sendText(); });
+  sendBtn.addEventListener('mouseup',    () => sendBtn.classList.remove('pressed'));
+
+  bkspBtn.addEventListener('touchstart', e => { e.preventDefault(); bkspBtn.classList.add('pressed'); socket.emit('remote:backspace'); }, { passive: false });
+  bkspBtn.addEventListener('touchend',   () => bkspBtn.classList.remove('pressed'));
+  bkspBtn.addEventListener('mousedown',  () => { bkspBtn.classList.add('pressed'); socket.emit('remote:backspace'); });
+  bkspBtn.addEventListener('mouseup',    () => bkspBtn.classList.remove('pressed'));
 </script>
 </body>
 </html>

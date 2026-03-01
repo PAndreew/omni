@@ -94,6 +94,11 @@ io.on('connection', (socket) => {
   socket.on('cec:right', () => io.emit('cec:right'));
   socket.on('cec:back',  () => io.emit('cec:back'));
 
+  // Remote text input relay — inject text / backspace / enter into focused kiosk input
+  socket.on('remote:type',      (text) => io.emit('remote:type', text));
+  socket.on('remote:backspace', ()     => io.emit('remote:backspace'));
+  socket.on('remote:enter',     ()     => io.emit('remote:enter'));
+
   // CEC commands from frontend (for admin mode)
   socket.on('cec:cmd', ({ cmd }) => {
     if (cmd === 'standby') {
