@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Calendar, Cloud, Music2, Lock, X } from 'lucide-react';
+import { Calendar, Cloud, Music2, Lock, X, Rss } from 'lucide-react';
 
 const COLORS = ['#00d4ff', '#ff00aa', '#ffd700', '#00ff88', '#a855f7', '#f97316'];
 
@@ -25,12 +25,18 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
   const [spotifyConnected, setSpotifyConnected] = useState(false);
   const [spotifySaved, setSpotifySaved] = useState(false);
 
+  // RSS feeds
+  const [rssFeeds, setRssFeeds] = useState([]);
+  const [rssForm, setRssForm] = useState({ name: '', url: '' });
+  const [rssAdding, setRssAdding] = useState(false);
+
   // Admin password change
   const [pwd, setPwd] = useState({ current: '', next: '', confirm: '' });
 
   useEffect(() => {
     if (!open) return;
     fetchCalendars();
+    fetchRssFeeds();
     fetch('/api/settings')
       .then(r => r.json())
       .then(s => {
@@ -42,6 +48,37 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
 
   const fetchCalendars = () =>
     fetch('/api/calendars').then(r => r.json()).then(setCalendars).catch(() => {});
+
+  const fetchRssFeeds = () =>
+    fetch('/api/rss/feeds').then(r => r.json()).then(setRssFeeds).catch(() => {});
+
+  const addRssFeed = async () => {
+    if (!rssForm.name.trim() || !rssForm.url.trim()) return;
+    setRssAdding(true);
+    try {
+      const res = await fetch('/api/rss/feeds', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rssForm),
+      });
+      if (res.ok) { setRssForm({ name: '', url: '' }); fetchRssFeeds(); }
+      else { const e = await res.json(); alert(e.error || 'Failed to add feed'); }
+    } finally { setRssAdding(false); }
+  };
+
+  const toggleRssFeed = async (feed) => {
+    await fetch(`/api/rss/feeds/${feed.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: !feed.enabled }),
+    });
+    fetchRssFeeds();
+  };
+
+  const deleteRssFeed = async (id) => {
+    await fetch(`/api/rss/feeds/${id}`, { method: 'DELETE' });
+    fetchRssFeeds();
+  };
 
   const addCalendar = async () => {
     if (!form.name.trim() || !form.url.trim()) return;
@@ -140,12 +177,13 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
 
         {/* Tabs */}
         <div className="sp-tabs">
-          {['calendars', 'weather', 'spotify', 'security'].map(t => (
+          {['calendars', 'weather', 'spotify', 'rss', 'security'].map(t => (
             <button key={t} className={`sp-tab ${tab === t ? 'active' : ''}`} onClick={() => setTab(t)}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                 {t === 'calendars' && <Calendar size={11} />}
                 {t === 'weather'   && <Cloud size={11} />}
                 {t === 'spotify'   && <Music2 size={11} />}
+                {t === 'rss'       && <Rss size={11} />}
                 {t === 'security'  && <Lock size={11} />}
                 {t.charAt(0).toUpperCase() + t.slice(1)}
               </span>
@@ -327,6 +365,73 @@ export default function SettingsPanel({ open, onClose, initialTab }) {
                   {spotifyConnected ? 'Reconnect' : 'Connect Spotify'}
                 </a>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── RSS tab ──────────────────────────────────────────── */}
+        {tab === 'rss' && (
+          <div className="sp-body">
+            <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 16, lineHeight: 1.6 }}>
+              Subscribe to any standard RSS feed. Items from all enabled feeds are merged newest-first in the widget.
+            </p>
+
+            {/* Feed list */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
+              {rssFeeds.map(feed => (
+                <div key={feed.id} className="glass cal-row">
+                  <Rss size={12} style={{ color: 'var(--silver)', flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{feed.name}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {feed.url}
+                    </div>
+                  </div>
+                  <button
+                    className="btn"
+                    style={{ padding: '3px 8px', fontSize: 11 }}
+                    onClick={() => toggleRssFeed(feed)}
+                    title={feed.enabled ? 'Disable' : 'Enable'}
+                  >
+                    {feed.enabled ? '●' : '○'}
+                  </button>
+                  <button
+                    className="btn"
+                    style={{ padding: '3px 8px', fontSize: 11, color: 'var(--magenta)' }}
+                    onClick={() => deleteRssFeed(feed.id)}
+                  >✕</button>
+                </div>
+              ))}
+              {rssFeeds.length === 0 && (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0' }}>
+                  No feeds yet
+                </div>
+              )}
+            </div>
+
+            {/* Add form */}
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <p className="label" style={{ marginBottom: 4 }}>Add RSS feed</p>
+              <input
+                className="input"
+                placeholder="Feed name (e.g. BBC News)"
+                value={rssForm.name}
+                onChange={e => setRssForm(f => ({ ...f, name: e.target.value }))}
+              />
+              <input
+                className="input"
+                placeholder="Feed URL (https://...)"
+                value={rssForm.url}
+                onChange={e => setRssForm(f => ({ ...f, url: e.target.value }))}
+              />
+              <button
+                className="btn primary"
+                onClick={addRssFeed}
+                disabled={rssAdding || !rssForm.name.trim() || !rssForm.url.trim()}
+                style={{ alignSelf: 'flex-end' }}
+              >
+                {rssAdding ? 'Adding…' : '+ Add feed'}
+              </button>
             </div>
           </div>
         )}

@@ -55,12 +55,33 @@ db.exec(`
     x INTEGER, y INTEGER,
     w INTEGER, h INTEGER
   );
+
+  CREATE TABLE IF NOT EXISTS rss_feeds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL UNIQUE,
+    enabled INTEGER DEFAULT 1,
+    added_at TEXT DEFAULT (datetime('now'))
+  );
 `);
 
-// Migration
+// Migrations
 try { db.exec("ALTER TABLE events ADD COLUMN uid TEXT"); }      catch {}
 try { db.exec("ALTER TABLE events ADD COLUMN all_day INTEGER DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE events ADD COLUMN owner TEXT DEFAULT ''"); }     catch {}
+
+// Seed default RSS feed if table is empty (also picks up any old rss_url setting)
+try {
+  const count = db.prepare('SELECT COUNT(*) as n FROM rss_feeds').get().n;
+  if (count === 0) {
+    const oldUrl = db.prepare("SELECT value FROM settings WHERE key = 'rss_url'").get()?.value;
+    const url = oldUrl || 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml';
+    const name = (oldUrl && oldUrl !== 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml')
+      ? 'News'
+      : 'World News (NYT)';
+    db.prepare('INSERT OR IGNORE INTO rss_feeds (name, url) VALUES (?, ?)').run(name, url);
+  }
+} catch {}
 
 const defaults = {
   weather_lat:    process.env.WEATHER_LAT  || '47.4979',
@@ -70,6 +91,8 @@ const defaults = {
   tts_voice:      '',
   tts_rate:       '1',
   tts_pitch:      '1',
+  rss_url:        'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',
+  rss_refresh:    '15',
 };
 
 const insertDefault = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
