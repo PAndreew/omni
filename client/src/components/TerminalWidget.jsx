@@ -54,12 +54,10 @@ function Session({ id, active, onClose, onActivate }) {
 
       // Tag xterm's hidden textarea with the session id so App.jsx can
       // route remote text input to the correct PTY session.
-      // Also set tabIndex=0 so D-pad Tab-cycling can reach it.
       try {
         const ta = containerRef.current.querySelector('textarea');
         if (ta) {
           ta.dataset.termSessionId = id;
-          ta.tabIndex = 0;
         }
       } catch {}
 

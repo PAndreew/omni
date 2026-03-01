@@ -67,9 +67,12 @@ export default function App() {
     return Array.from(
       tile.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href], textarea, select, [tabindex="0"]')
     ).filter(el => {
-      // Check if it's visible or has a focusable tabindex
       const style = window.getComputedStyle(el);
-      return style.display !== 'none' && style.visibility !== 'hidden';
+      if (style.display === 'none' || style.visibility === 'hidden') return false;
+      // Exclude xterm hidden textareas — terminal typing is handled by remote:type → PTY
+      if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) return false;
+      if (el.classList?.contains('xterm-helper-textarea')) return false;
+      return true;
     });
   }, [focusIdx]);
 
@@ -94,17 +97,12 @@ export default function App() {
       ? Math.min(cur < 0 ? 0 : cur + 1, els.length - 1)
       : Math.max(cur <= 0 ? 0 : cur - 1, 0);
     els[next].focus();
-    // Don't scroll xterm's hidden helper textarea into view
-    if (!els[next].classList?.contains('xterm-helper-textarea')) {
-      els[next].scrollIntoView({ block: 'nearest' });
-    }
+    els[next].scrollIntoView({ block: 'nearest' });
   }, [getTileFocusables]);
 
   const widgetActivate = useCallback(() => {
     const el = document.activeElement;
     if (!el) return;
-    // xterm textarea: typing is handled by remote:type → PTY, skip Enter dispatch
-    if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) return;
     if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
       el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     } else {
@@ -136,8 +134,18 @@ export default function App() {
     else if (widgetMode) exitWidget();
   });
 
-  // Remote text relay — route to focused element; if it's an xterm textarea, send to PTY
+  // Helper: get active terminal session id from DOM
+  const getActiveTermId = useCallback(() => {
+    return document.querySelector('[data-active-term-id]')?.dataset.activeTermId || null;
+  }, []);
+
+  // Remote text relay — route to PTY when terminal is active widget, else to focused input
   useSocket('remote:type', (text) => {
+    // Terminal widget is active → always send to PTY
+    if (widgetMode && TILES[focusIdx] === 'terminal') {
+      const id = getActiveTermId();
+      if (id) { getSocket().emit('term:input', { id, data: text }); return; }
+    }
     const el = document.activeElement;
     if (!el) return;
     if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) {
@@ -150,6 +158,10 @@ export default function App() {
     el.dispatchEvent(new Event('input', { bubbles: true }));
   });
   useSocket('remote:backspace', () => {
+    if (widgetMode && TILES[focusIdx] === 'terminal') {
+      const id = getActiveTermId();
+      if (id) { getSocket().emit('term:input', { id, data: '\x7f' }); return; }
+    }
     const el = document.activeElement;
     if (!el) return;
     if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) {
@@ -162,6 +174,10 @@ export default function App() {
     el.dispatchEvent(new Event('input', { bubbles: true }));
   });
   useSocket('remote:enter', () => {
+    if (widgetMode && TILES[focusIdx] === 'terminal') {
+      const id = getActiveTermId();
+      if (id) { getSocket().emit('term:input', { id, data: '\r' }); return; }
+    }
     const el = document.activeElement;
     if (!el) return;
     if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) {
