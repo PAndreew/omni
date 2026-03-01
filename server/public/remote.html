@@ -7,6 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>OmniWall Remote</title>
+  <script src="https://unpkg.com/lucide@latest"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -67,6 +68,13 @@
     .status-dot.connected { background: var(--green); }
     .status-left { display: flex; align-items: center; }
 
+    .back-btn {
+      display: flex; align-items: center;
+      color: var(--silver); text-decoration: none;
+      padding: 4px; border-radius: 4px; transition: color 0.2s;
+    }
+    .back-btn:active { color: #fff; }
+
     /* ─── Now Playing bar ────────────────────────────── */
     .now-playing-bar {
       width: 100%;
@@ -105,7 +113,6 @@
       border: 1px solid var(--border);
       color: var(--silver-light);
       display: flex; align-items: center; justify-content: center;
-      font-size: 22px;
       cursor: pointer;
       transition: background 0.06s;
       touch-action: manipulation;
@@ -202,7 +209,12 @@
       touch-action: manipulation;
     }
     .media-btn.pressed { background: #1c1c1c; color: #fff; }
-    .media-play { font-size: 26px; }
+
+    /* Icon sizing */
+    i[data-lucide] {
+      width: 24px;
+      height: 24px;
+    }
   </style>
 </head>
 <body>
@@ -210,10 +222,15 @@
 
   <!-- Status bar -->
   <div class="status-bar">
-    <span class="status-left">
-      <span class="status-dot" id="dot"></span>
-      <span id="status-text">Connecting…</span>
-    </span>
+    <div style="display: flex; align-items: center; gap: 4px;">
+      <a href="/" class="back-btn" title="Back to Dashboard">
+        <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i>
+      </a>
+      <span class="status-left">
+        <span class="status-dot" id="dot"></span>
+        <span id="status-text">Connecting…</span>
+      </span>
+    </div>
     <span>OmniWall Remote</span>
   </div>
 
@@ -233,24 +250,26 @@
   <div class="dpad-area">
     <div class="dpad-row">
       <div class="dpad-spacer"></div>
-      <button class="dpad-btn dpad-up"    data-event="cec:up"     aria-label="Up">▲</button>
+      <button class="dpad-btn dpad-up"    data-event="cec:up"     aria-label="Up"><i data-lucide="chevron-up"></i></button>
       <div class="dpad-spacer"></div>
     </div>
     <div class="dpad-row">
-      <button class="dpad-btn dpad-left"  data-event="cec:left"   aria-label="Left">◀</button>
+      <button class="dpad-btn dpad-left"  data-event="cec:left"   aria-label="Left"><i data-lucide="chevron-left"></i></button>
       <button class="dpad-center"         data-event="cec:select"  aria-label="Select">OK</button>
-      <button class="dpad-btn dpad-right" data-event="cec:right"  aria-label="Right">▶</button>
+      <button class="dpad-btn dpad-right" data-event="cec:right"  aria-label="Right"><i data-lucide="chevron-right"></i></button>
     </div>
     <div class="dpad-row">
       <div class="dpad-spacer"></div>
-      <button class="dpad-btn dpad-down"  data-event="cec:down"   aria-label="Down">▼</button>
+      <button class="dpad-btn dpad-down"  data-event="cec:down"   aria-label="Down"><i data-lucide="chevron-down"></i></button>
       <div class="dpad-spacer"></div>
     </div>
   </div>
 
   <!-- Back button -->
   <div class="action-row">
-    <button class="action-btn" data-event="cec:back" aria-label="Back">← Back</button>
+    <button class="action-btn" data-event="cec:back" aria-label="Back">
+      <i data-lucide="corner-up-left" style="width: 16px; height: 16px;"></i> Back
+    </button>
   </div>
 
   <!-- Text input bar: type here, ↵ sends to focused kiosk input, ⌫ deletes last char -->
@@ -258,15 +277,15 @@
     <input class="type-input" id="type-input" type="text"
            placeholder="Type into focused field…"
            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
-    <button class="type-btn" id="bksp-btn" aria-label="Backspace">⌫</button>
-    <button class="type-btn" id="send-btn" aria-label="Send / Enter">↵</button>
+    <button class="type-btn" id="bksp-btn" aria-label="Backspace"><i data-lucide="delete"></i></button>
+    <button class="type-btn" id="send-btn" aria-label="Send / Enter"><i data-lucide="corner-down-left"></i></button>
   </div>
 
   <!-- Media controls -->
   <div class="media-row">
-    <button class="media-btn"       data-http="/api/audio/prev"   aria-label="Previous">⏮</button>
-    <button class="media-btn media-play" data-http="/api/audio/toggle" aria-label="Play/Pause" id="play-btn">▶</button>
-    <button class="media-btn"       data-http="/api/audio/next"   aria-label="Next">⏭</button>
+    <button class="media-btn"       data-http="/api/audio/prev"   aria-label="Previous"><i data-lucide="skip-back"></i></button>
+    <button class="media-btn media-play" data-http="/api/audio/toggle" aria-label="Play/Pause" id="play-btn"><i data-lucide="play" id="play-icon"></i><i data-lucide="pause" id="pause-icon" style="display:none;"></i></button>
+    <button class="media-btn"       data-http="/api/audio/next"   aria-label="Next"><i data-lucide="skip-forward"></i></button>
   </div>
 
 </div>
@@ -275,8 +294,6 @@
 <script src="/socket.io/socket.io.js"></script>
 <script>
   // Connect to the Express/socket.io server.
-  // The remote is always served from port 3001, so window.location.origin works.
-  // The replace handles the rare dev case where someone proxies through :5173.
   const origin = window.location.origin.replace(':5173', ':3001');
   const socket = io(origin, { transports: ['websocket'], reconnection: true });
 
@@ -287,19 +304,30 @@
   socket.on('disconnect',    () => { dot.classList.remove('connected'); statusText.textContent = 'Disconnected'; });
   socket.on('connect_error', () => { dot.classList.remove('connected'); statusText.textContent = 'Connection failed'; });
 
+  // Safe Lucide initialization
+  function refreshIcons() {
+    if (window.lucide) {
+      lucide.createIcons();
+    }
+  }
+
+  window.addEventListener('load', refreshIcons);
+
   // ─── Now Playing ─────────────────────────────────────────────
-  const npIdle   = document.getElementById('np-idle');
-  const npTrack  = document.getElementById('np-track');
-  const npArt    = document.getElementById('np-art');
-  const npTitle  = document.getElementById('np-title');
-  const npArtist = document.getElementById('np-artist');
-  const playBtn  = document.getElementById('play-btn');
+  const npIdle    = document.getElementById('np-idle');
+  const npTrack   = document.getElementById('np-track');
+  const npArt     = document.getElementById('np-art');
+  const npTitle   = document.getElementById('np-title');
+  const npArtist  = document.getElementById('np-artist');
+  const playIcon  = document.getElementById('play-icon');
+  const pauseIcon = document.getElementById('pause-icon');
 
   function updateTrack(t) {
     if (!t || !t.title) {
       npIdle.style.display  = '';
       npTrack.style.display = 'none';
-      playBtn.textContent   = '▶';
+      playIcon.style.display = '';
+      pauseIcon.style.display = 'none';
       return;
     }
     npIdle.style.display   = 'none';
@@ -308,7 +336,14 @@
     npArtist.textContent   = t.artist || '';
     npArt.src              = t.art || '';
     npArt.style.display    = t.art ? '' : 'none';
-    playBtn.textContent    = t.status === 'playing' ? '⏸' : '▶';
+    
+    if (t.status === 'playing') {
+      playIcon.style.display = 'none';
+      pauseIcon.style.display = '';
+    } else {
+      playIcon.style.display = '';
+      pauseIcon.style.display = 'none';
+    }
   }
 
   socket.on('audio:track', updateTrack);
@@ -346,7 +381,6 @@
   function sendText() {
     const text = typeInput.value;
     if (!text) {
-      // empty send = Enter key on the kiosk (submit form / confirm)
       socket.emit('remote:enter');
       return;
     }
@@ -354,7 +388,6 @@
     typeInput.value = '';
   }
 
-  // Enter key on phone keyboard sends text
   typeInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sendText(); } });
 
   sendBtn.addEventListener('touchstart', e => { e.preventDefault(); sendBtn.classList.add('pressed'); sendText(); }, { passive: false });

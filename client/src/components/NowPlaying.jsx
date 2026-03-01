@@ -113,28 +113,6 @@ export default function NowPlaying({ focused }) {
     </div>
   );
 
-  // Compact layout used for both mobile and narrow desktop columns
-  const CompactLayout = () => (
-    <div className="np-compact">
-      {/* Row: art + info + controls */}
-      <div className="np-compact-row">
-        <div className="np-compact-art">
-          {track.art
-            ? <img src={track.art} className="np-art" alt="album art" />
-            : <div className="np-art-placeholder"><Music size={24} style={{ color: 'var(--text-muted)' }} /></div>
-          }
-        </div>
-        <div className="np-compact-mid">
-          <div className="np-title np-title-compact">{track.title}</div>
-          <div className="np-artist">{track.artist}</div>
-        </div>
-        <Controls />
-      </div>
-      {/* Progress */}
-      {track.duration > 0 && <ProgressBar />}
-    </div>
-  );
-
   return (
     <>
     {discoMode && <DiscoMode track={track} onClose={() => setDiscoMode(false)} />}
@@ -167,31 +145,23 @@ export default function NowPlaying({ focused }) {
           </div>
         </>
       ) : track?.title ? (
-        <>
+        <div className="np-compact">
           <HeaderRow />
-
-          {/* ── Wide layout (tall art on top) ───────────────── */}
-          <div className="np-wide">
-            <div className="np-art-container">
+          <div className="np-compact-row">
+            <div className="np-compact-art">
               {track.art
                 ? <img src={track.art} className="np-art" alt="album art" />
-                : <div className="np-art-placeholder"><Music size={40} style={{ color: 'var(--text-muted)' }} /></div>
+                : <div className="np-art-placeholder"><Music size={24} style={{ color: 'var(--text-muted)' }} /></div>
               }
             </div>
-            <div className="np-info">
+            <div className="np-compact-mid">
               <div className="np-title">{track.title}</div>
               <div className="np-artist">{track.artist}</div>
-              <div className="np-album">{track.album}</div>
             </div>
             <Controls />
-            {track.duration > 0 && <ProgressBar />}
           </div>
-
-          {/* ── Compact layout (art + info + controls row) ───── */}
-          <div className="np-compact-wrapper">
-            <CompactLayout />
-          </div>
-        </>
+          {track.duration > 0 && <ProgressBar />}
+        </div>
       ) : (
         <>
           <HeaderRow />
@@ -204,7 +174,6 @@ export default function NowPlaying({ focused }) {
       )}
 
       <style>{`
-        /* ── Shared ─────────────────────────────────────── */
         .nowplaying-tile { display: flex; flex-direction: column; gap: 12px; }
         .np-header { display: flex; justify-content: space-between; align-items: center; }
         .np-header-icons { display: flex; align-items: center; gap: 2px; }
@@ -215,21 +184,18 @@ export default function NowPlaying({ focused }) {
         .np-art  { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block; }
         .np-art-placeholder { width: 100%; height: 100%; border-radius: 8px; background: var(--surface-2);
                                display: flex; align-items: center; justify-content: center; }
-        .np-info  { overflow: hidden; }
         .np-title  { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .np-artist { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
-        .np-album  { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
 
-        .np-controls { display: flex; justify-content: center; align-items: center; gap: 12px; }
+        .np-controls { display: flex; justify-content: center; align-items: center; gap: 10px; }
         .np-btn  { background: none; border: 1px solid var(--border); border-radius: 50%;
-                   width: 38px; height: 38px; color: var(--text); cursor: pointer;
+                   width: 34px; height: 34px; color: var(--text); cursor: pointer;
                    display: flex; align-items: center; justify-content: center; transition: all 0.2s; flex-shrink: 0; }
         .np-btn:hover { border-color: var(--silver); color: var(--silver-light); }
-        .np-play  { width: 46px; height: 46px; border-color: var(--silver); color: var(--silver-light); }
+        .np-play  { width: 40px; height: 40px; border-color: var(--silver); color: var(--silver-light); }
         .np-idle  { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 
-        /* ── Progress bar ───────────────────────────────── */
-        .np-progress-row { display: flex; align-items: center; gap: 8px; }
+        .np-progress-row { display: flex; align-items: center; gap: 8px; padding: 0 2px; }
         .np-time { font-size: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums;
                    letter-spacing: 0.04em; flex-shrink: 0; min-width: 28px; }
         .np-time:last-child { text-align: right; }
@@ -241,7 +207,6 @@ export default function NowPlaying({ focused }) {
                               width: 8px; height: 8px; border-radius: 50%;
                               background: var(--silver-light); transition: left 0.9s linear; }
 
-        /* ── Search ─────────────────────────────────────── */
         .np-search-container { flex: 1; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
         .np-search-results { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
         .np-search-item { display: flex; align-items: center; gap: 10px; padding: 6px 10px;
@@ -249,47 +214,10 @@ export default function NowPlaying({ focused }) {
         .np-search-item:hover { background: var(--surface-2); border-color: var(--silver); }
         .np-search-item.cec-active { background: var(--surface-2); border-color: var(--silver-light); }
 
-        /* ── Wide layout (default, tall art on top) ─────── */
-        .np-wide { display: flex; flex-direction: column; gap: 12px; flex: 1; }
-        .np-wide .np-art-container { position: relative; width: 100%; aspect-ratio: 1/1; max-height: 160px; }
-        .np-compact-wrapper { display: none; }
-
-        /* ── Compact layout (art + info + controls row) ─── */
-        .np-compact { display: flex; flex-direction: column; gap: 10px; flex: 1; }
-        .np-compact-row {
-          display: flex; align-items: center; gap: 12px;
-        }
-        .np-compact-art {
-          width: 80px; height: 80px; flex-shrink: 0;
-        }
-        .np-compact-mid {
-          flex: 1; min-width: 0; overflow: hidden;
-        }
-        .np-title-compact { font-size: 13px; }
-        .np-compact .np-controls { gap: 8px; }
-        .np-compact .np-btn  { width: 34px; height: 34px; }
-        .np-compact .np-play { width: 40px; height: 40px; }
-        .np-compact .np-progress-row { padding: 0 2px; }
-
-        /* 
-         * Responsive rules:
-         * - Wide layout: when the widget is in a wide column (min-width: 200px)
-         * - Compact layout: when narrow (TV grid column, or mobile)
-         */
-        @media (max-width: 768px) {
-          .np-wide { display: none; }
-          .np-compact-wrapper { display: flex; flex-direction: column; flex: 1; }
-        }
-
-        /* Container query: use compact layout when widget itself is narrow */
-        .grid-area-nowplaying {
-          container-type: inline-size;
-          container-name: nowplaying;
-        }
-        @container nowplaying (max-width: 220px) {
-          .np-wide { display: none !important; }
-          .np-compact-wrapper { display: flex !important; flex-direction: column; flex: 1; }
-        }
+        .np-compact { display: flex; flex-direction: column; gap: 12px; flex: 1; }
+        .np-compact-row { display: flex; align-items: center; gap: 12px; }
+        .np-compact-art { width: 80px; height: 80px; flex-shrink: 0; }
+        .np-compact-mid { flex: 1; min-width: 0; overflow: hidden; }
       `}</style>
     </div>
     </>
