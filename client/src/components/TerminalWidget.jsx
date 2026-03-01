@@ -52,6 +52,13 @@ function Session({ id, active, onClose, onActivate }) {
       term.open(containerRef.current);
       fitAddon.fit();
 
+      // Tag xterm's hidden textarea with the session id so App.jsx can
+      // route remote text input to the correct PTY session.
+      try {
+        const ta = containerRef.current.querySelector('textarea');
+        if (ta) ta.dataset.termSessionId = id;
+      } catch {}
+
       termRef.current = term;
       fitRef.current  = fitAddon;
 
@@ -114,8 +121,34 @@ function Session({ id, active, onClose, onActivate }) {
 }
 
 export default function TerminalWidget({ focused }) {
+  const rootRef = useRef(null);
   const [sessions, setSessions] = useState(() => [{ id: `term-${++sessionCounter}` }]);
   const [activeId, setActiveId] = useState(() => sessions[0].id);
+
+  const focusTerminalFor = useCallback((sessionId) => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    const tryFocus = (attempt = 0) => {
+      const ta = root.querySelector(`textarea[data-term-session-id="${sessionId}"]`)
+        || root.querySelector('.xterm-helper-textarea')
+        || root.querySelector('textarea[data-term-session-id]');
+
+      if (ta) {
+        ta.focus();
+        return;
+      }
+
+      // xterm is lazy-loaded from CDN, so it may not be ready immediately.
+      if (attempt < 20) setTimeout(() => tryFocus(attempt + 1), 50);
+    };
+
+    tryFocus();
+  }, []);
+
+  const focusActiveTerminal = useCallback(() => {
+    focusTerminalFor(activeId);
+  }, [activeId, focusTerminalFor]);
 
   const newSession = useCallback(() => {
     const id = `term-${++sessionCounter}`;
@@ -138,7 +171,15 @@ export default function TerminalWidget({ focused }) {
   }, []);
 
   return (
-    <div className={`tile term-tile ${focused ? 'focused' : ''}`}>
+    <div ref={rootRef} className={`tile term-tile ${focused ? 'focused' : ''}`}>
+      {/* Focus proxy: lets D-pad/CEC "enter" the terminal and lands focus into xterm */}
+      <div
+        className="term-focus-proxy"
+        tabIndex={0}
+        aria-label="Focus terminal"
+        onFocus={focusActiveTerminal}
+      />
+
       {/* Tab bar */}
       <div className="term-tabbar">
         <TermIcon size={13} strokeWidth={1.5} style={{ color: 'var(--text-dim)', flexShrink: 0 }} />
@@ -147,7 +188,7 @@ export default function TerminalWidget({ focused }) {
             <button
               key={s.id}
               className={`term-tab ${s.id === activeId ? 'active' : ''}`}
-              onClick={() => setActiveId(s.id)}
+              onClick={() => { setActiveId(s.id); setTimeout(() => focusTerminalFor(s.id), 0); }}
             >
               <span>{i + 1}</span>
               <span className="term-tab-close" onClick={e => { e.stopPropagation(); closeSession(s.id); }}>
@@ -162,13 +203,13 @@ export default function TerminalWidget({ focused }) {
       </div>
 
       {/* Terminal panes */}
-      <div className="term-body">
+      <div className="term-body" tabIndex={0} onFocus={focusActiveTerminal} onClick={focusActiveTerminal}>
         {sessions.map(s => (
           <Session
             key={s.id}
             id={s.id}
             active={s.id === activeId}
-            onActivate={() => setActiveId(s.id)}
+            onActivate={() => { setActiveId(s.id); setTimeout(() => focusTerminalFor(s.id), 0); }}
             onClose={() => closeSession(s.id)}
           />
         ))}
@@ -210,6 +251,15 @@ export default function TerminalWidget({ focused }) {
           padding: 4px 6px 4px 4px;
           background: #000;
         }
+
+        .term-focus-proxy {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          opacity: 0;
+          pointer-events: none;
+        }
+
         /* xterm overrides */
         .term-body .xterm { height: 100% !important; }
         .term-body .xterm-viewport { border-radius: 0; }

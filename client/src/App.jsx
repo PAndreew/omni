@@ -134,7 +134,15 @@ export default function App() {
   // Remote text relay — inject into whichever <input>/<textarea> is focused on the kiosk
   useSocket('remote:type', (text) => {
     const el = document.activeElement;
-    if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return;
+    if (!el) return;
+
+    // If focus is inside xterm, route remote text directly to the PTY.
+    if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) {
+      getSocket().emit('term:input', { id: el.dataset.termSessionId, data: text });
+      return;
+    }
+
+    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
     const proto  = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
     setter.call(el, el.value + text);
@@ -142,7 +150,15 @@ export default function App() {
   });
   useSocket('remote:backspace', () => {
     const el = document.activeElement;
-    if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return;
+    if (!el) return;
+
+    // xterm (terminal) backspace
+    if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) {
+      getSocket().emit('term:input', { id: el.dataset.termSessionId, data: '\x7f' });
+      return;
+    }
+
+    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
     const proto  = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
     setter.call(el, el.value.slice(0, -1));
@@ -150,7 +166,15 @@ export default function App() {
   });
   useSocket('remote:enter', () => {
     const el = document.activeElement;
-    if (el) el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    if (!el) return;
+
+    // xterm (terminal) enter
+    if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) {
+      getSocket().emit('term:input', { id: el.dataset.termSessionId, data: '\r' });
+      return;
+    }
+
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   });
 
   useGamepad({
