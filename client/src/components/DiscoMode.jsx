@@ -18,9 +18,16 @@ const FRAG = `
   #define TAU 6.28318530718
   #define PI  3.14159265359
 
-  // Inigo Quilez cosine palette — neons that cycle through magenta/cyan/gold
-  vec3 pal(float t) {
-    return vec3(0.5) + vec3(0.5) * cos(TAU * (vec3(1.0, 1.0, 0.5) * t + vec3(0.80, 0.20, 0.60)));
+  // Full-spectrum palette: R/G/B on different frequencies + per-iteration phase shift
+  // → produces reds, oranges, yellows, greens, cyans, blues, magentas across iterations
+  vec3 pal(float t, float idx) {
+    // 120° phase spacing between channels = full hue wheel
+    vec3 phase = vec3(0.0, 0.333, 0.667)
+               + idx * vec3(0.17, 0.09, 0.24);   // shift each iteration differently
+    // Different cycle speeds per channel breaks R/G lockstep
+    vec3 freq  = vec3(1.00, 1.31, 0.72)
+               + idx * vec3(0.15, 0.20, 0.10);
+    return 0.5 + 0.5 * cos(TAU * (freq * t + phase));
   }
 
   void main() {
@@ -43,7 +50,7 @@ const FRAG = `
       uv = fract(uv * 1.5 + u_time * 0.04) - 0.5;     // drift + tile
 
       float d = length(uv) * exp(-length(uv0));
-      vec3  c = pal(length(uv0) * 0.5 + i * 0.35 + u_time * 0.10);
+      vec3  c = pal(length(uv0) * 0.5 + i * 0.35 + u_time * 0.10, i);
 
       d = sin(d * 8.0 + u_time * 1.6) / 8.0;           // pulsing rings
       d = abs(d);

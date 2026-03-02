@@ -134,7 +134,7 @@ export default function NowPlaying({ focused }) {
         <>
           <HeaderRow />
           <div className="np-search-container">
-            <input className="input" autoFocus placeholder="Search Spotify..."
+            <input className="input" placeholder="Search Spotify..."
               value={search} onChange={e => { setSearch(e.target.value); doSearch(e.target.value); }} />
             <div className="np-search-results">
               {searchResults.map((t, i) => (
