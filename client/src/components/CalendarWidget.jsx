@@ -32,8 +32,8 @@ export default function CalendarWidget({ focused }) {
 
   return (
     <div className={`tile cal-tile ${focused ? 'focused' : ''}`}>
-      <div className="cal-header">
-        <p className="title" style={{ margin: 0 }}>Calendar</p>
+      <div className="cal-header tile-header">
+        <p className="title">Calendar</p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button className="btn" style={{ padding: '4px 8px', fontSize: 11 }}
             onClick={() => { const t = new Date(); setMonth(t); setSelectedDay(t); }}>Today</button>
@@ -93,7 +93,7 @@ export default function CalendarWidget({ focused }) {
 
       <style>{`
         .cal-tile { display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
-        .cal-header { display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+        .cal-header { flex-shrink: 0; }
         .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; flex-shrink: 0; }
         .cal-dow  { text-align: center; font-size: 11px; letter-spacing: 0.08em; color: var(--text-dim);
                     text-transform: uppercase; padding: 3px 0; }

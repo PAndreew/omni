@@ -83,7 +83,7 @@ export default function ChoreList({ focused }) {
         onSubmit={(text) => { setShowKeyboard(false); addChore(text); }}
         onClose={() => setShowKeyboard(false)}
       />
-      <div className="chore-header">
+      <div className="chore-header tile-header">
         <p className="title">Chores <span style={{ color: 'var(--silver-light)', fontVariantNumeric: 'tabular-nums' }}>{pending.length}</span></p>
         {debug && <span className="chore-status">{debug}</span>}
       </div>
@@ -114,7 +114,6 @@ export default function ChoreList({ focused }) {
 
       <style>{`
         .chore-tile { display: flex; flex-direction: column; gap: 12px; pointer-events: auto; }
-        .chore-header { display: flex; justify-content: space-between; align-items: baseline; }
         .chore-status { font-size: 11px; color: var(--silver); text-transform: uppercase; letter-spacing: 0.05em; }
         .chore-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
         .chore-add  { display: flex; gap: 8px; position: relative; z-index: 10; }

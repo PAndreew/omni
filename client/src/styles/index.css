@@ -95,7 +95,14 @@ html, body, #root {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-dim);
-  margin-bottom: 16px;
+  margin: 0 0 16px 0;
+  line-height: 1;
+}
+
+.tile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
 }
 
 /* ─── Silver gradient text ───────────────────────────────────────── */

@@ -76,7 +76,7 @@ export default function RssWidget({ focused }) {
 
   return (
     <div className={`tile rss-tile ${focused ? 'focused' : ''}`}>
-      <div className="rss-header">
+      <div className="rss-header tile-header">
         <p className="title">News</p>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           {addMsg && <span style={{ fontSize: 10, color: 'var(--silver)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{addMsg}</span>}
@@ -164,7 +164,7 @@ export default function RssWidget({ focused }) {
 
       <style>{`
         .rss-tile { display: flex; flex-direction: column; height: 100%; overflow: hidden; gap: 0; }
-        .rss-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .rss-header { margin-bottom: 10px; }
         .rss-icon-btn { background: none; border: none; color: var(--text-dim); cursor: pointer;
                         padding: 4px; border-radius: 4px; display: flex; align-items: center;
                         transition: color 0.2s; }

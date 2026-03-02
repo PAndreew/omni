@@ -79,8 +79,8 @@ export default function NowPlaying({ focused }) {
   const progress  = track?.duration > 0 ? (currentPos / track.duration) * 100 : 0;
 
   const HeaderRow = () => (
-    <div className="np-header">
-      <p className="title" style={{ margin: 0 }}>Now Playing</p>
+    <div className="np-header tile-header">
+      <p className="title">Now Playing</p>
       <div className="np-header-icons">
         {track?.title && (
           <button className="np-icon-btn" onClick={() => setDiscoMode(true)} title="Disco mode">
@@ -181,7 +181,6 @@ export default function NowPlaying({ focused }) {
 
       <style>{`
         .nowplaying-tile { display: flex; flex-direction: column; gap: 12px; }
-        .np-header { display: flex; justify-content: space-between; align-items: center; }
         .np-header-icons { display: flex; align-items: center; gap: 2px; }
         .np-icon-btn { background: none; border: none; padding: 6px; color: var(--text-dim);
                        cursor: pointer; display: flex; align-items: center; transition: color 0.2s; }

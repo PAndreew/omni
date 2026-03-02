@@ -23,7 +23,7 @@ export default function Clock({ focused }) {
       </div>
       <p className="clock-date">{dateStr}</p>
       <style>{`
-        .clock-tile { display: flex; flex-direction: column; justify-content: center; }
+        .clock-tile { display: flex; flex-direction: column; justify-content: flex-start; }
         .clock-time  { display: flex; align-items: baseline; gap: 4px; }
         .clock-hm    { font-family: 'Satoshi', sans-serif; font-size: clamp(36px, 6vw, 88px);
                        font-weight: 300; letter-spacing: -3px; line-height: 1;
