@@ -110,7 +110,7 @@ function Session({ id, active, onClose, onActivate }) {
       onClick={onActivate}
       data-session-id={id}
     >
-      <div ref={containerRef} style={{ flex: 1, minHeight: 0, overflow: 'hidden' }} />
+      <div ref={containerRef} style={{ flex: 1, minHeight: 0, overscrollBehavior: 'contain' }} />
     </div>
   );
 }
@@ -249,8 +249,9 @@ export default function TerminalWidget({ focused }) {
         }
 
         /* xterm overrides */
-        .term-body .xterm { height: 100% !important; }
-        .term-body .xterm-viewport { border-radius: 0; }
+        .term-body .xterm { height: 100% !important; overflow: visible !important; }
+        .term-body .xterm-viewport { border-radius: 0; overscroll-behavior: contain; }
+        .term-body .xterm-screen  { overflow: visible !important; }
       `}</style>
     </div>
   );

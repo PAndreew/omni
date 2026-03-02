@@ -34,7 +34,14 @@ export async function initAgent(io) {
         description: 'Returns the list of all chores (tasks).',
         parameters: Type.Object({}),
         execute: async () => {
-          const chores = db.prepare('SELECT * FROM chores ORDER BY done ASC, created_at DESC').all();
+          const chores = db.prepare(`
+            SELECT * FROM chores 
+            ORDER BY 
+              done ASC, 
+              CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, 
+              due_date ASC, 
+              created_at DESC
+          `).all();
           return { content: [{ type: 'text', text: JSON.stringify(chores, null, 2) }] };
         }
       },
@@ -46,13 +53,15 @@ export async function initAgent(io) {
           title: Type.String({ description: 'The task description' }),
           assignee: Type.Optional(Type.String({ description: 'Who is responsible' })),
           priority: Type.Optional(Type.String({ enum: ['low', 'medium', 'high'] })),
+          due_date: Type.Optional(Type.String({ description: 'Due date in YYYY-MM-DD format' })),
+          repeat_interval: Type.Optional(Type.String({ enum: ['daily', 'weekly', 'monthly'], description: 'Optional repeat interval' })),
         }),
-        execute: async (id, { title, assignee = '', priority = 'medium' }) => {
-          const result = db.prepare('INSERT INTO chores (title, assignee, priority) VALUES (?, ?, ?)')
-                           .run(title, assignee, priority);
+        execute: async (id, { title, assignee = '', priority = 'medium', due_date = null, repeat_interval = null }) => {
+          const result = db.prepare('INSERT INTO chores (title, assignee, priority, due_date, repeat_interval) VALUES (?, ?, ?, ?, ?)')
+                           .run(title, assignee, priority, due_date, repeat_interval);
           const chore = db.prepare('SELECT * FROM chores WHERE id = ?').get(result.lastInsertRowid);
           io.emit('chore:added', chore);
-          return { content: [{ type: 'text', text: `Added chore: ${title}` }] };
+          return { content: [{ type: 'text', text: `Added chore: ${title}${due_date ? ' due ' + due_date : ''}${repeat_interval ? ', repeats ' + repeat_interval : ''}` }] };
         }
       },
       {
@@ -63,13 +72,35 @@ export async function initAgent(io) {
           id: Type.Number({ description: 'The ID of the chore to complete' }),
         }),
         execute: async (cid, { id }) => {
+          const chore = db.prepare('SELECT * FROM chores WHERE id = ?').get(id);
+          if (!chore) return { content: [{ type: 'text', text: `Chore with ID ${id} not found.` }] };
+
+          // Reuse the logic for repeating chores
+          const getNextDueDate = (currentDueDate, interval) => {
+            if (!currentDueDate || !interval) return null;
+            const date = new Date(currentDueDate);
+            if (isNaN(date.getTime())) return null;
+            if (interval === 'daily') date.setDate(date.getDate() + 1);
+            else if (interval === 'weekly') date.setDate(date.getDate() + 7);
+            else if (interval === 'monthly') date.setMonth(date.getMonth() + 1);
+            else return null;
+            return date.toISOString().split('T')[0];
+          };
+
+          if (chore.repeat_interval) {
+            const nextDue = getNextDueDate(chore.due_date || new Date().toISOString().split('T')[0], chore.repeat_interval);
+            if (nextDue) {
+              db.prepare('UPDATE chores SET due_date = ?, done = 0 WHERE id = ?').run(nextDue, id);
+              const updated = db.prepare('SELECT * FROM chores WHERE id = ?').get(id);
+              io.emit('chore:updated', updated);
+              return { content: [{ type: 'text', text: `Completed ${chore.title}. Next occurrence scheduled for ${nextDue}.` }] };
+            }
+          }
+
           db.prepare('UPDATE chores SET done = 1 WHERE id = ?').run(id);
           const updated = db.prepare('SELECT * FROM chores WHERE id = ?').get(id);
-          if (updated) {
-            io.emit('chore:updated', updated);
-            return { content: [{ type: 'text', text: `Completed chore: ${updated.title}` }] };
-          }
-          return { content: [{ type: 'text', text: `Chore with ID ${id} not found.` }] };
+          io.emit('chore:updated', updated);
+          return { content: [{ type: 'text', text: `Completed chore: ${updated.title}` }] };
         }
       },
       {

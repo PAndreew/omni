@@ -20,6 +20,7 @@ db.exec(`
     assignee TEXT DEFAULT '',
     done INTEGER DEFAULT 0,
     due_date TEXT DEFAULT NULL,
+    repeat_interval TEXT DEFAULT NULL, -- NULL, 'daily', 'weekly', 'monthly'
     created_at TEXT DEFAULT (datetime('now'))
   );
 
@@ -67,6 +68,7 @@ db.exec(`
 
 // Migrations
 try { db.exec("ALTER TABLE chores ADD COLUMN priority TEXT DEFAULT 'medium'"); } catch {}
+try { db.exec("ALTER TABLE chores ADD COLUMN repeat_interval TEXT DEFAULT NULL"); } catch {}
 try { db.exec("ALTER TABLE events ADD COLUMN uid TEXT"); }      catch {}
 try { db.exec("ALTER TABLE events ADD COLUMN all_day INTEGER DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE events ADD COLUMN owner TEXT DEFAULT ''"); }     catch {}

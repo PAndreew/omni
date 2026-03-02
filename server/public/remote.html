@@ -210,6 +210,28 @@
     }
     .media-btn.pressed { background: #1c1c1c; color: #fff; }
 
+    /* ─── Terminal special keys ──────────────────────── */
+    .keys-row {
+      display: flex;
+      gap: 8px;
+      width: 100%;
+      max-width: 280px;
+    }
+    .key-btn {
+      flex: 1; height: 44px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--silver);
+      font-size: 12px; font-weight: 600;
+      font-family: 'SF Mono', 'Fira Mono', monospace;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: background 0.06s;
+      touch-action: manipulation;
+    }
+    .key-btn.pressed { background: #1c1c1c; color: #fff; }
+
     /* Icon sizing */
     i[data-lucide] {
       width: 24px;
@@ -279,6 +301,15 @@
            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
     <button class="type-btn" id="bksp-btn" aria-label="Backspace"><i data-lucide="delete"></i></button>
     <button class="type-btn" id="send-btn" aria-label="Send / Enter"><i data-lucide="corner-down-left"></i></button>
+  </div>
+
+  <!-- Terminal special keys -->
+  <div class="keys-row">
+    <button class="key-btn" data-key="	"         title="Tab">⇥ Tab</button>
+    <button class="key-btn" data-key="&#x1b;"    title="Escape">Esc</button>
+    <button class="key-btn" data-key="&#x03;"    title="Ctrl+C">^C</button>
+    <button class="key-btn" data-key="&#x1b;[A"  title="Up (history)">↑</button>
+    <button class="key-btn" data-key="&#x1b;[B"  title="Down (history)">↓</button>
   </div>
 
   <!-- Media controls -->
@@ -399,6 +430,17 @@
   bkspBtn.addEventListener('touchend',   () => bkspBtn.classList.remove('pressed'));
   bkspBtn.addEventListener('mousedown',  () => { bkspBtn.classList.add('pressed'); socket.emit('remote:backspace'); });
   bkspBtn.addEventListener('mouseup',    () => bkspBtn.classList.remove('pressed'));
+
+  // ─── Terminal special keys (data-key) ───────────────
+  document.querySelectorAll('[data-key]').forEach(btn => {
+    const key = btn.dataset.key;
+    const press   = () => { socket.emit('remote:type', key); btn.classList.add('pressed'); };
+    const release = () => btn.classList.remove('pressed');
+    btn.addEventListener('touchstart', e => { e.preventDefault(); press(); },  { passive: false });
+    btn.addEventListener('touchend',   () => release());
+    btn.addEventListener('mousedown',  () => press());
+    btn.addEventListener('mouseup',    () => release());
+  });
 </script>
 </body>
 </html>
