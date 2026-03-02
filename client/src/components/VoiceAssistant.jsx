@@ -45,10 +45,9 @@ export default function VoiceAssistant({ focused }) {
     else if (listening) setStatus('listening');
   }, [wakeWordDetected, listening]);
 
-  // Auto-start on mount so the kiosk is always listening without any button press
+  // Auto-start on mount (kiosk). On mobile Safari this silently fails — user must tap Start.
   useEffect(() => {
-    start();
-    setActive(true);
+    start().then(() => setActive(true)).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggle = useCallback(() => {
@@ -83,7 +82,7 @@ export default function VoiceAssistant({ focused }) {
 
         <div className="voice-text">
           <div className="voice-status">
-            {status === 'idle'       && <span style={{ color: 'var(--text-muted)' }}>Say <em>"Hey Omni"</em> to activate</span>}
+            {status === 'idle'       && <span style={{ color: 'var(--text-muted)' }}>{active ? 'Say \u201cHey Omni\u201d to activate' : 'Tap \u201cStart\u201d to enable microphone'}</span>}
             {status === 'listening'  && <span style={{ color: 'var(--silver)' }}>Listening… say "Hey Omni" to activate</span>}
             {status === 'wake'       && <span className="chromatic-text" style={{ fontWeight: 600 }}>Wake word detected — listening for command…</span>}
             {status === 'processing' && <span style={{ color: 'var(--silver-light)' }}>Processing: "{transcript}"</span>}

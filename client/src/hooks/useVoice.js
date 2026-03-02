@@ -188,6 +188,7 @@ export function useVoiceRecognition({ onCommand, onListening, onError } = {}) {
       streamRef.current = stream;
 
       const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
+      if (ctx.state === 'suspended') await ctx.resume();
       await ctx.audioWorklet.addModule('/audio-processor.js');
       audioCtxRef.current = ctx;
 
