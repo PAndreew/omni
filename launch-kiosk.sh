@@ -45,8 +45,7 @@ if [ -n "$WIN" ]; then
   DISPLAY=:0 XAUTHORITY=/home/pi/.Xauthority xdotool \
     windowfocus "$WIN" \
     windowsize  "$WIN" 1920 1080 \
-    windowmove  "$WIN" 0 0 \
-    windowstate --add FULLSCREEN "$WIN"
+    windowmove  "$WIN" 0 0
 fi
 
 wait $CHROME_PID

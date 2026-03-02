@@ -22,6 +22,7 @@ import { startCalendarSync } from './services/calendar.js';
 import spotifyRouter from './routes/spotify.js';
 import { initAgent, processVoiceCommand } from './services/agent.js';
 import { startWhisper } from './services/whisper.js';
+import db from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
@@ -82,8 +83,10 @@ app.post('/api/voice/transcribe', express.raw({ type: 'audio/*', limit: '50mb' }
   try {
     const mime = req.headers['content-type'] || 'audio/webm';
     const ext  = mime.includes('mp4') ? '.mp4' : mime.includes('ogg') ? '.ogg' : mime.includes('wav') ? '.wav' : '.webm';
+    const lang = db.prepare("SELECT value FROM settings WHERE key='voice_language'").get()?.value || 'hu';
     const form = new FormData();
     form.append('file', new Blob([req.body], { type: mime }), `audio${ext}`);
+    form.append('language', lang);
     const resp = await fetch('http://127.0.0.1:8765/inference', { method: 'POST', body: form });
     res.json(await resp.json());
   } catch (err) {

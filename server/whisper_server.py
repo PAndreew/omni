@@ -26,6 +26,9 @@ async def inference(request):
     if not audio_file:
         return web.json_response({'error': 'No file'}, status=400)
 
+    lang_field = data.get('language', 'hu')
+    lang = None if lang_field in ('auto', '', None) else lang_field
+
     raw = audio_file.file.read()
     fname = getattr(audio_file, 'filename', 'audio.wav') or 'audio.wav'
     import os as _os; suffix = _os.path.splitext(fname)[1] or '.wav'
@@ -37,7 +40,7 @@ async def inference(request):
     try:
         segments, info = model.transcribe(
             tmp,
-            language=None,      # auto-detect (en / hu / …)
+            language=lang,
             beam_size=5,
             vad_filter=True,    # skip pure-silence segments
             initial_prompt="Hey Omni, okay Omni, hi Omni, hej Omni.",

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WAKE_WORDS        = ['hey omni', 'okay omni', 'hi omni', 'hej omni'];
+const WAKE_WORDS        = ['hey omni', 'okay omni', 'hi omni', 'hej omni', 'omni'];
 
 // Strip Unicode diacritics so "Omnę" → "omne", "héj" → "hej", etc.
 function stripDiacritics(s) {
@@ -16,7 +16,7 @@ function matchesWakeWord(norm) {
   return hasGreeting && hasOmni;
 }
 const ENERGY_THRESHOLD  = 0.008;  // RMS from AnalyserNode byte data (0–1 normalised)
-const SPEECH_CONFIRM_MS = 250;
+const SPEECH_CONFIRM_MS = 80;
 const SILENCE_END_MS    = 1300;
 const MAX_DURATION_MS   = 9000;
 
@@ -68,13 +68,15 @@ export function useVoiceRecognition({ onCommand, onListening, onError } = {}) {
   const recorderRef  = useRef(null);
   const chunksRef    = useRef([]);
 
-  const wakeRef      = useRef(false);
-  const wakeTimeout  = useRef(null);
+  const wakeRef           = useRef(false);
+  const wakeTimeout       = useRef(null);
+  const recentTranscripts = useRef([]); // rolling 4-second window for split wake words
 
   const resetWake = useCallback(() => {
     wakeRef.current = false;
     setWakeWordDetected(false);
     clearTimeout(wakeTimeout.current);
+    recentTranscripts.current = [];
   }, []);
 
   // ── Process transcript from Whisper ────────────────────────────────────────
@@ -87,7 +89,14 @@ export function useVoiceRecognition({ onCommand, onListening, onError } = {}) {
 
     // Normalize for wake word check: strip diacritics, punctuation, extra spaces
     const normalized = stripDiacritics(t).replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").replace(/\s{2,}/g, " ").trim();
-    const matchesWake = matchesWakeWord(normalized);
+
+    // Rolling 4-second buffer — catches "Hey." + "Omni." split across two VAD chunks
+    const now = Date.now();
+    recentTranscripts.current.push({ text: normalized, time: now });
+    recentTranscripts.current = recentTranscripts.current.filter(e => now - e.time < 4000);
+    const combined = recentTranscripts.current.map(e => e.text).join(' ');
+
+    const matchesWake = matchesWakeWord(normalized) || (!wakeRef.current && matchesWakeWord(combined));
 
     if (!wakeRef.current) {
       if (matchesWake) {
@@ -118,7 +127,7 @@ export function useVoiceRecognition({ onCommand, onListening, onError } = {}) {
         wakeTimeout.current = setTimeout(() => {
           console.log('[Voice] Wake timeout reached');
           resetWake();
-        }, 8000);
+        }, 20000);
       }
     } else {
       console.log('[Voice] Processing command in wake mode:', t);

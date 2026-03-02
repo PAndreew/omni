@@ -3,12 +3,16 @@ import { Mic, MicOff, Volume2, Loader } from 'lucide-react';
 import { useVoiceRecognition, useTTS } from '../hooks/useVoice.js';
 import { useSocket } from '../hooks/useSocket.js';
 
+const LANGS = ['hu', 'en', 'auto'];
+const LANG_LABEL = { hu: 'HU', en: 'EN', auto: 'AUTO' };
+
 export default function VoiceAssistant({ focused }) {
   const [status, setStatus] = useState('idle'); // idle | listening | wake | processing | speaking
   const [transcript, setTranscript] = useState('');
   const [reply, setReply] = useState('');
   const [active, setActive] = useState(false);
   const [error, setError] = useState('');
+  const [lang, setLang] = useState('hu');
 
   const { speak } = useTTS();
 
@@ -50,6 +54,21 @@ export default function VoiceAssistant({ focused }) {
     if (wakeWordDetected) setStatus('wake');
     else if (listening) setStatus('listening');
   }, [wakeWordDetected, listening]);
+
+  // Load saved language
+  useEffect(() => {
+    fetch('/api/settings').then(r => r.json()).then(s => setLang(s.voice_language || 'hu')).catch(() => {});
+  }, []);
+
+  const cycleLang = useCallback(() => {
+    const next = LANGS[(LANGS.indexOf(lang) + 1) % LANGS.length];
+    setLang(next);
+    fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ voice_language: next }),
+    }).catch(() => {});
+  }, [lang]);
 
   // Auto-start only on non-touch devices (kiosk). Mobile Safari needs a user gesture first.
   useEffect(() => {
@@ -114,9 +133,19 @@ export default function VoiceAssistant({ focused }) {
           )}
         </div>
 
-        <button className="btn" onClick={toggle}>
-          {active ? 'Stop' : 'Start'}
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          <button className="btn" onClick={toggle}>
+            {active ? 'Stop' : 'Start'}
+          </button>
+          <button onClick={cycleLang} style={{
+            fontSize: 9, fontFamily: 'monospace', fontWeight: 700, letterSpacing: '0.08em',
+            padding: '2px 7px', borderRadius: 4, cursor: 'pointer',
+            background: 'var(--surface-2)', border: '1px solid var(--border)',
+            color: lang === 'auto' ? 'var(--text-dim)' : 'var(--silver)',
+          }}>
+            {LANG_LABEL[lang]}
+          </button>
+        </div>
       </div>
 
       <div className="voice-hint">
