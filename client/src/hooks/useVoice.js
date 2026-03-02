@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WAKE_WORDS = ['hey omni', 'okay omni', 'hi omni'];
-const WAKE_CONFIDENCE = 0.75;
+const WAKE_WORDS      = ['hey omni', 'okay omni', 'hi omni', 'hej omni'];
+const WAKE_CONFIDENCE = 0.60;   // slightly relaxed for accented/non-native speech
+const LANGS           = ['en-US', 'hu-HU'];
 
 export function useTTS() {
   const speak = useCallback((text, { rate = 1, pitch = 1, voice = null } = {}) => {
@@ -26,12 +27,20 @@ export function useTTS() {
 }
 
 export function useVoiceRecognition({ onCommand, onListening, onError } = {}) {
-  const [listening, setListening] = useState(false);
-  const [transcript, setTranscript] = useState('');
+  const [listening,        setListening]        = useState(false);
+  const [transcript,       setTranscript]       = useState('');
   const [wakeWordDetected, setWakeWordDetected] = useState(false);
-  const recognitionRef = useRef(null);
-  const wakeRef = useRef(false);
-  const timeoutRef = useRef(null);
+
+  // Keep callback ref fresh so recognition closures always call the latest version
+  const onCommandRef  = useRef(onCommand);
+  const onListeningRef = useRef(onListening);
+  useEffect(() => { onCommandRef.current  = onCommand;  }, [onCommand]);
+  useEffect(() => { onListeningRef.current = onListening; }, [onListening]);
+
+  const instancesRef  = useRef({});   // { 'en-US': SpeechRecognition, 'hu-HU': ... }
+  const wakeRef       = useRef(false);
+  const timeoutRef    = useRef(null);
+  const lastCmdRef    = useRef(0);    // timestamp — dedup window between parallel instances
 
   const supported = typeof window !== 'undefined' &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
@@ -42,87 +51,99 @@ export function useVoiceRecognition({ onCommand, onListening, onError } = {}) {
     clearTimeout(timeoutRef.current);
   }, []);
 
-  const start = useCallback(() => {
-    if (!supported || recognitionRef.current) return;
+  const fireCommand = useCallback((command) => {
+    const now = Date.now();
+    if (now - lastCmdRef.current < 1500) return;   // drop duplicate from the other instance
+    lastCmdRef.current = now;
+    resetWake();
+    onCommandRef.current?.(command);
+  }, [resetWake]);
 
+  const startLang = useCallback((lang) => {
+    if (!supported) return null;
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = navigator.language || 'en-US';
-    recognition.maxAlternatives = 1;
+    const r = new SpeechRecognition();
+    r.continuous      = true;
+    r.interimResults  = true;
+    r.lang            = lang;
+    r.maxAlternatives = 1;
 
-    recognition.onstart = () => {
+    r.onstart = () => {
       setListening(true);
-      onListening?.(true);
+      onListeningRef.current?.(true);
     };
 
-    recognition.onresult = (event) => {
+    r.onresult = (event) => {
       const results = Array.from(event.results);
-      const lastResult = results[results.length - 1];
-      const text = lastResult[0].transcript.trim().toLowerCase();
+      const last    = results[results.length - 1];
+      const text    = last[0].transcript.trim().toLowerCase();
       setTranscript(text);
 
       if (!wakeRef.current) {
-        // Check for wake word with confidence threshold to avoid false triggers
-        const confidence = lastResult[0].confidence ?? 1;
-        const hasWake = confidence >= WAKE_CONFIDENCE && WAKE_WORDS.some(w => text.includes(w));
+        const conf    = last[0].confidence ?? 1;
+        const hasWake = conf >= WAKE_CONFIDENCE && WAKE_WORDS.some(w => text.includes(w));
         if (hasWake) {
           wakeRef.current = true;
           setWakeWordDetected(true);
-          
-          // Check if there is already a command after the wake word in the same phrase
-          let command = text;
-          for (const w of WAKE_WORDS) command = command.replace(w, '').trim();
-          
-          if (command.length > 2 && lastResult.isFinal) {
-            clearTimeout(timeoutRef.current);
-            resetWake();
-            onCommand?.(command);
-            return;
-          }
-
-          // Auto-reset wake word after 8s if no command follows
+          let cmd = text;
+          for (const w of WAKE_WORDS) cmd = cmd.replace(w, '').trim();
+          if (cmd.length > 2 && last.isFinal) { fireCommand(cmd); return; }
           clearTimeout(timeoutRef.current);
           timeoutRef.current = setTimeout(resetWake, 8000);
         }
         return;
       }
 
-      // Wake word already detected — next final result is the command
-      if (lastResult.isFinal) {
-        // Strip wake word from command
-        let command = text;
-        for (const w of WAKE_WORDS) command = command.replace(w, '').trim();
-        if (command.length > 2) {
-          clearTimeout(timeoutRef.current);
-          resetWake();
-          onCommand?.(command);
-        }
+      if (last.isFinal) {
+        let cmd = text;
+        for (const w of WAKE_WORDS) cmd = cmd.replace(w, '').trim();
+        if (cmd.length > 2) fireCommand(cmd);
       }
     };
 
-    recognition.onerror = (event) => {
-      if (event.error === 'no-speech') return; // normal
-      console.warn('[Voice]', event.error);
+    r.onerror = (event) => {
+      if (event.error === 'no-speech') return;
+      if (event.error === 'audio-capture') {
+        // Browser doesn't support parallel mic streams — silently drop this language
+        delete instancesRef.current[lang];
+        return;
+      }
+      console.warn('[Voice]', lang, event.error);
       onError?.(event.error);
     };
 
-    recognition.onend = () => {
-      recognitionRef.current = null;
-      setListening(false);
-      onListening?.(false);
-      // Auto-restart for continuous listening
-      setTimeout(start, 500);
+    r.onend = () => {
+      // Only auto-restart if we're still the registered instance for this language
+      if (instancesRef.current[lang] !== r) return;
+      setTimeout(() => {
+        if (instancesRef.current[lang] !== r) return;
+        const nr = startLang(lang);
+        if (nr) instancesRef.current[lang] = nr;
+        else delete instancesRef.current[lang];
+      }, 500);
+      if (Object.keys(instancesRef.current).length === 0) {
+        setListening(false);
+        onListeningRef.current?.(false);
+      }
     };
 
-    recognition.start();
-    recognitionRef.current = recognition;
-  }, [supported, onCommand, onListening, onError, resetWake]);
+    try { r.start(); return r; } catch { return null; }
+  }, [supported, onError, fireCommand, resetWake]);
+
+  const start = useCallback(() => {
+    if (!supported || Object.keys(instancesRef.current).length > 0) return;
+    for (const lang of LANGS) {
+      const r = startLang(lang);
+      if (r) instancesRef.current[lang] = r;
+    }
+  }, [supported, startLang]);
 
   const stop = useCallback(() => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
+    Object.values(instancesRef.current).forEach(r => { try { r.stop(); } catch {} });
+    instancesRef.current = {};
+    clearTimeout(timeoutRef.current);
+    setListening(false);
+    onListeningRef.current?.(false);
   }, []);
 
   useEffect(() => () => stop(), [stop]);
