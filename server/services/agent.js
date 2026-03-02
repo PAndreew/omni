@@ -195,15 +195,21 @@ export async function initAgent(io) {
     ];
 
     const loader = new DefaultResourceLoader({
-      systemPromptOverride: () => `
+      systemPromptOverride: () => {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        return `
 You are the "Omni" voice assistant. You are running on a Raspberry Pi hub.
+The current date and time is: ${dateStr}, ${timeStr}.
 You help the family manage chores, music, and home automation.
 Be concise, friendly, and efficient.
 When the user asks to do something, use your tools.
 If you don't have a tool for something, explain that you can't do it yet but maybe in the future.
 Keep your verbal responses short as they will be spoken aloud via TTS.
 IMPORTANT: Always respond in the same language the user spoke in. If they speak Hungarian, reply in Hungarian. If English, reply in English.
-`
+`;
+      }
     });
     await loader.reload();
 
