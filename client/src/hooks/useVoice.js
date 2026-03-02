@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WAKE_WORDS = ['omni', 'hey omni', 'okay omni', 'hi omni'];
+const WAKE_WORDS = ['hey omni', 'okay omni', 'hi omni'];
+const WAKE_CONFIDENCE = 0.75;
 
 export function useTTS() {
   const speak = useCallback((text, { rate = 1, pitch = 1, voice = null } = {}) => {
@@ -63,11 +64,24 @@ export function useVoiceRecognition({ onCommand, onListening, onError } = {}) {
       setTranscript(text);
 
       if (!wakeRef.current) {
-        // Check for wake word
-        const hasWake = WAKE_WORDS.some(w => text.includes(w));
+        // Check for wake word with confidence threshold to avoid false triggers
+        const confidence = lastResult[0].confidence ?? 1;
+        const hasWake = confidence >= WAKE_CONFIDENCE && WAKE_WORDS.some(w => text.includes(w));
         if (hasWake) {
           wakeRef.current = true;
           setWakeWordDetected(true);
+          
+          // Check if there is already a command after the wake word in the same phrase
+          let command = text;
+          for (const w of WAKE_WORDS) command = command.replace(w, '').trim();
+          
+          if (command.length > 2 && lastResult.isFinal) {
+            clearTimeout(timeoutRef.current);
+            resetWake();
+            onCommand?.(command);
+            return;
+          }
+
           // Auto-reset wake word after 8s if no command follows
           clearTimeout(timeoutRef.current);
           timeoutRef.current = setTimeout(resetWake, 8000);

@@ -20,6 +20,7 @@ import { startAudioBridge, getCurrentTrack, sendCommand } from './services/audio
 import { startScheduler } from './services/scheduler.js';
 import { startCalendarSync } from './services/calendar.js';
 import spotifyRouter from './routes/spotify.js';
+import { initAgent, processVoiceCommand } from './services/agent.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
@@ -68,7 +69,7 @@ app.get('/api/audio/current', (req, res) => res.json(getCurrentTrack()));
 // Voice command endpoint — frontend sends parsed command text
 app.post('/api/voice/command', async (req, res) => {
   const { text } = req.body;
-  const reply = await handleVoiceCommand(text?.toLowerCase() || '');
+  const reply = await processVoiceCommand(text?.toLowerCase() || '');
   io.emit('voice:reply', { text: reply });
   res.json({ reply });
 });
@@ -175,6 +176,7 @@ startCEC(io);
 startAudioBridge(io);
 startScheduler(io);
 startCalendarSync(io);
+initAgent(io);
 
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🖥️  OmniWall server running at http://0.0.0.0:${PORT}`);
@@ -183,87 +185,3 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`   Tailscale DNS:  http://raspberrypi.tailf0acdd.ts.net:${PORT}`);
 });
 
-// ─── Voice command processor ────────────────────────────────────────────────
-
-import db from './db.js';
-
-async function handleVoiceCommand(text) {
-  // Time
-  if (/what.*(time|clock)/.test(text)) {
-    const now = new Date();
-    return `It is ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}.`;
-  }
-
-  // Date
-  if (/what.*(date|day)/.test(text) || /what day/.test(text)) {
-    return `Today is ${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}.`;
-  }
-
-  // Weather
-  if (/weather|temperature|forecast|outside|rain|snow/.test(text)) {
-    try {
-      const resp = await fetch(`http://localhost:${PORT}/api/weather`);
-      const w = await resp.json();
-      if (w.error) return 'I could not fetch the weather right now.';
-      return `Currently ${w.temp}°C in ${w.city}, ${w.condition.label}. Feels like ${w.feels_like}°C with ${w.humidity}% humidity.`;
-    } catch {
-      return 'Weather data unavailable.';
-    }
-  }
-
-  // Chores — list pending
-  if (/chore|task|todo/.test(text) && /list|pending|left|remain/.test(text)) {
-    const chores = db.prepare('SELECT title FROM chores WHERE done=0').all();
-    if (!chores.length) return 'No pending chores. All done!';
-    return `You have ${chores.length} pending chore${chores.length > 1 ? 's' : ''}: ${chores.map(c => c.title).join(', ')}.`;
-  }
-
-  // Chores — add
-  const addMatch = text.match(/add chore[:\s]+(.+)/);
-  if (addMatch) {
-    const title = addMatch[1].trim();
-    db.prepare('INSERT INTO chores (title) VALUES (?)').run(title);
-    const chore = db.prepare('SELECT * FROM chores ORDER BY id DESC LIMIT 1').get();
-    io.emit('chore:added', chore);
-    return `Added chore: ${title}.`;
-  }
-
-  // Music — toggle
-  if (/play|pause|music/.test(text)) {
-    sendCommand('toggle');
-    return 'Toggling music playback.';
-  }
-
-  // Music — next
-  if (/next|skip/.test(text)) {
-    sendCommand('next');
-    return 'Skipping to next track.';
-  }
-
-  // Music — previous
-  if (/previous|back|restart/.test(text)) {
-    sendCommand('prev');
-    return 'Going to previous track.';
-  }
-
-  // Good night / lights off
-  if (/good night|sleep|turn off|screen off/.test(text)) {
-    io.emit('cec:cmd', { cmd: 'standby' });
-    return 'Good night. Turning off the display.';
-  }
-
-  // Good morning
-  if (/good morning|wake|turn on|screen on/.test(text)) {
-    io.emit('cec:cmd', { cmd: 'on' });
-    return 'Good morning!';
-  }
-
-  // Now playing
-  if (/playing|song|track|artist/.test(text)) {
-    const track = getCurrentTrack();
-    if (!track || !track.title) return 'Nothing is playing right now.';
-    return `Now playing "${track.title}" by ${track.artist} from the album ${track.album}.`;
-  }
-
-  return "Sorry, I didn't understand that command. Try asking about the weather, time, chores, or music.";
-}

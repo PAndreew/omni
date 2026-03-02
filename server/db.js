@@ -66,6 +66,7 @@ db.exec(`
 `);
 
 // Migrations
+try { db.exec("ALTER TABLE chores ADD COLUMN priority TEXT DEFAULT 'medium'"); } catch {}
 try { db.exec("ALTER TABLE events ADD COLUMN uid TEXT"); }      catch {}
 try { db.exec("ALTER TABLE events ADD COLUMN all_day INTEGER DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE events ADD COLUMN owner TEXT DEFAULT ''"); }     catch {}

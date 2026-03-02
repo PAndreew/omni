@@ -45,6 +45,12 @@ export default function VoiceAssistant({ focused }) {
     else if (listening) setStatus('listening');
   }, [wakeWordDetected, listening]);
 
+  // Auto-start on mount so the kiosk is always listening without any button press
+  useEffect(() => {
+    start();
+    setActive(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const toggle = useCallback(() => {
     if (active) { stop(); setActive(false); setStatus('idle'); }
     else { start(); setActive(true); setStatus('listening'); }

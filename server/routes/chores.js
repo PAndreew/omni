@@ -11,12 +11,17 @@ router.get('/', (req, res) => {
 
 router.post('/', (req, res) => {
   console.log('[CHORES] POST request body:', JSON.stringify(req.body));
-  const { title, assignee = '', due_date = null } = req.body;
+  const { title, assignee = '', due_date = null, priority = 'medium' } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: 'Title required' });
-  const result = db.prepare('INSERT INTO chores (title, assignee, due_date) VALUES (?, ?, ?)').run(title.trim(), assignee, due_date);
-  const chore = db.prepare('SELECT * FROM chores WHERE id = ?').get(result.lastInsertRowid);
-  req.io.emit('chore:added', chore);
-  res.json(chore);
+  
+  try {
+    const result = db.prepare('INSERT INTO chores (title, assignee, due_date, priority) VALUES (?, ?, ?, ?)').run(title.trim(), assignee, due_date, priority);
+    const chore = db.prepare('SELECT * FROM chores WHERE id = ?').get(result.lastInsertRowid);
+    req.io.emit('chore:added', chore);
+    res.json(chore);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.patch('/:id/toggle', (req, res) => {
@@ -32,6 +37,31 @@ router.delete('/:id', (req, res) => {
   db.prepare('DELETE FROM chores WHERE id = ?').run(req.params.id);
   req.io.emit('chore:deleted', { id: parseInt(req.params.id) });
   res.json({ ok: true });
+});
+
+// Bulk/Advanced updates for agent control
+router.post('/batch', (req, res) => {
+  const { action, ids, payload } = req.body;
+  if (!ids?.length) return res.status(400).json({ error: 'No IDs' });
+
+  if (action === 'delete') {
+    const stmt = db.prepare('DELETE FROM chores WHERE id = ?');
+    ids.forEach(id => stmt.run(id));
+    ids.forEach(id => req.io.emit('chore:deleted', { id: parseInt(id) }));
+    return res.json({ ok: true });
+  }
+
+  if (action === 'complete') {
+    const stmt = db.prepare('UPDATE chores SET done = 1 WHERE id = ?');
+    ids.forEach(id => stmt.run(id));
+    ids.forEach(id => {
+      const updated = db.prepare('SELECT * FROM chores WHERE id = ?').get(id);
+      req.io.emit('chore:updated', updated);
+    });
+    return res.json({ ok: true });
+  }
+
+  res.status(400).json({ error: 'Unknown action' });
 });
 
 export default router;
