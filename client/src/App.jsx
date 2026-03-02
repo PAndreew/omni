@@ -435,12 +435,18 @@ export default function App() {
         .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 500; }
         .modal { padding: 28px; border-radius: 0; width: min(360px, calc(100vw - 32px)); }
 
-        /* Widget mode: show focus ring on whatever element is selected */
+        /* Widget mode / Modals: show focus ring on whatever element is selected */
         .widget-active button:focus,
         .widget-active input:focus,
         .widget-active textarea:focus,
         .widget-active a:focus,
-        .widget-active [tabindex="0"]:focus {
+        .widget-active [tabindex="0"]:focus,
+        .modal button:focus,
+        .modal input:focus,
+        .settings-panel button:focus,
+        .settings-panel input:focus,
+        .games-panel button:focus,
+        .games-panel input:focus {
           outline: 2px solid var(--silver-light) !important;
           outline-offset: -2px;
           box-shadow: 0 0 15px rgba(255,255,255,0.1);
