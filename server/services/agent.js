@@ -104,6 +104,39 @@ export async function initAgent(io) {
         }
       },
       {
+        name: 'update_chore',
+        label: 'Update Chore',
+        description: 'Edits an existing chore. Only provide the fields you want to change.',
+        parameters: Type.Object({
+          id: Type.Number({ description: 'The ID of the chore to update' }),
+          title: Type.Optional(Type.String({ description: 'New title/description' })),
+          assignee: Type.Optional(Type.String({ description: 'Who is responsible' })),
+          priority: Type.Optional(Type.String({ enum: ['low', 'medium', 'high'] })),
+          due_date: Type.Optional(Type.String({ description: 'New due date in YYYY-MM-DD format, or null to clear' })),
+          repeat_interval: Type.Optional(Type.String({ enum: ['daily', 'weekly', 'monthly'], description: 'Repeat interval, or null to clear' })),
+        }),
+        execute: async (cid, { id, title, assignee, due_date, priority, repeat_interval }) => {
+          const chore = db.prepare('SELECT * FROM chores WHERE id = ?').get(id);
+          if (!chore) return { content: [{ type: 'text', text: `Chore with ID ${id} not found.` }] };
+
+          const updates = {};
+          if (title !== undefined) updates.title = title.trim();
+          if (assignee !== undefined) updates.assignee = assignee;
+          if (due_date !== undefined) updates.due_date = due_date;
+          if (priority !== undefined) updates.priority = priority;
+          if (repeat_interval !== undefined) updates.repeat_interval = repeat_interval;
+
+          if (Object.keys(updates).length === 0)
+            return { content: [{ type: 'text', text: 'No changes provided.' }] };
+
+          const sets = Object.keys(updates).map(k => `${k} = ?`).join(', ');
+          db.prepare(`UPDATE chores SET ${sets} WHERE id = ?`).run(...Object.values(updates), id);
+          const updated = db.prepare('SELECT * FROM chores WHERE id = ?').get(id);
+          io.emit('chore:updated', updated);
+          return { content: [{ type: 'text', text: `Updated chore ${id}: ${JSON.stringify(updates)}` }] };
+        }
+      },
+      {
         name: 'delete_chore',
         label: 'Delete Chore',
         description: 'Deletes a chore from the system.',

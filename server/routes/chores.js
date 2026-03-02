@@ -48,6 +48,28 @@ function getNextDueDate(currentDueDate, interval) {
   return date.toISOString().split('T')[0];
 }
 
+router.patch('/:id', (req, res) => {
+  const chore = db.prepare('SELECT * FROM chores WHERE id = ?').get(req.params.id);
+  if (!chore) return res.status(404).json({ error: 'Not found' });
+
+  const { title, assignee, due_date, priority, repeat_interval } = req.body;
+  const updates = {};
+  if (title !== undefined) updates.title = title.trim();
+  if (assignee !== undefined) updates.assignee = assignee;
+  if (due_date !== undefined) updates.due_date = due_date;
+  if (priority !== undefined) updates.priority = priority;
+  if (repeat_interval !== undefined) updates.repeat_interval = repeat_interval;
+
+  if (Object.keys(updates).length === 0) return res.status(400).json({ error: 'No fields to update' });
+
+  const sets = Object.keys(updates).map(k => `${k} = ?`).join(', ');
+  db.prepare(`UPDATE chores SET ${sets} WHERE id = ?`).run(...Object.values(updates), req.params.id);
+
+  const updated = db.prepare('SELECT * FROM chores WHERE id = ?').get(req.params.id);
+  req.io.emit('chore:updated', updated);
+  res.json(updated);
+});
+
 router.patch('/:id/toggle', (req, res) => {
   const chore = db.prepare('SELECT * FROM chores WHERE id = ?').get(req.params.id);
   if (!chore) return res.status(404).json({ error: 'Not found' });
