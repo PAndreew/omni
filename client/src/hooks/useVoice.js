@@ -1,22 +1,51 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WAKE_WORDS      = ['hey omni', 'okay omni', 'hi omni', 'hej omni'];
-const WAKE_CONFIDENCE = 0.60;   // slightly relaxed for accented/non-native speech
-const LANGS           = ['en-US', 'hu-HU'];
+const WAKE_WORDS         = ['hey omni', 'okay omni', 'hi omni', 'hej omni'];
+const SAMPLE_RATE        = 16000;
+const ENERGY_THRESHOLD   = 0.012;   // RMS level that counts as speech
+const SPEECH_CONFIRM_MS  = 250;     // must be loud for this long before we start recording
+const SILENCE_END_MS     = 1300;    // silence after speech → send for transcription
+const MAX_DURATION_MS    = 9000;    // force-send even if no silence (long utterance)
 
+// ── WAV encoder ───────────────────────────────────────────────────────────────
+function encodeWAV(samples /* Int16Array */, sampleRate) {
+  const buf  = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buf);
+  const str  = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  str(0,  'RIFF');  view.setUint32(4,  36 + samples.length * 2, true);
+  str(8,  'WAVE');  str(12, 'fmt ');
+  view.setUint32(16, 16, true);          // chunk size
+  view.setUint16(20, 1,  true);          // PCM
+  view.setUint16(22, 1,  true);          // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2,  true);          // block align
+  view.setUint16(34, 16, true);          // bits per sample
+  str(36, 'data'); view.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) view.setInt16(44 + i * 2, samples[i], true);
+  return new Blob([buf], { type: 'audio/wav' });
+}
+
+// ── RMS energy of an Int16 chunk ──────────────────────────────────────────────
+function rms(int16) {
+  let sum = 0;
+  for (let i = 0; i < int16.length; i++) sum += (int16[i] / 32768) ** 2;
+  return Math.sqrt(sum / int16.length);
+}
+
+// ── TTS ───────────────────────────────────────────────────────────────────────
 export function useTTS() {
   const speak = useCallback((text, { rate = 1, pitch = 1, voice = null } = {}) => {
     if (!('speechSynthesis' in window) || !text) return;
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = rate;
-    utterance.pitch = pitch;
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = rate; u.pitch = pitch;
     if (voice) {
-      const voices = window.speechSynthesis.getVoices();
-      const match = voices.find(v => v.name.toLowerCase().includes(voice.toLowerCase()));
-      if (match) utterance.voice = match;
+      const match = window.speechSynthesis.getVoices()
+        .find(v => v.name.toLowerCase().includes(voice.toLowerCase()));
+      if (match) u.voice = match;
     }
-    window.speechSynthesis.speak(utterance);
+    window.speechSynthesis.speak(u);
   }, []);
 
   const cancel = useCallback(() => {
@@ -26,127 +55,177 @@ export function useTTS() {
   return { speak, cancel };
 }
 
+// ── Voice recognition ─────────────────────────────────────────────────────────
 export function useVoiceRecognition({ onCommand, onListening, onError } = {}) {
   const [listening,        setListening]        = useState(false);
   const [transcript,       setTranscript]       = useState('');
   const [wakeWordDetected, setWakeWordDetected] = useState(false);
 
-  // Keep callback ref fresh so recognition closures always call the latest version
-  const onCommandRef  = useRef(onCommand);
-  const onListeningRef = useRef(onListening);
-  useEffect(() => { onCommandRef.current  = onCommand;  }, [onCommand]);
-  useEffect(() => { onListeningRef.current = onListening; }, [onListening]);
+  const onCommandRef = useRef(onCommand);
+  useEffect(() => { onCommandRef.current = onCommand; }, [onCommand]);
 
-  const instancesRef  = useRef({});   // { 'en-US': SpeechRecognition, 'hu-HU': ... }
-  const wakeRef       = useRef(false);
-  const timeoutRef    = useRef(null);
-  const lastCmdRef    = useRef(0);    // timestamp — dedup window between parallel instances
+  // audio pipeline refs
+  const audioCtxRef = useRef(null);
+  const streamRef   = useRef(null);
+  const workletRef  = useRef(null);
 
-  const supported = typeof window !== 'undefined' &&
-    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+  // VAD state
+  const vadState      = useRef('idle');   // 'idle' | 'confirming' | 'recording' | 'silence'
+  const vadBuffer     = useRef([]);       // accumulated Int16 samples for current utterance
+  const silenceTimer  = useRef(null);
+  const maxTimer      = useRef(null);
+  const confirmTimer  = useRef(null);
+
+  // wake-word state
+  const wakeRef     = useRef(false);
+  const wakeTimeout = useRef(null);
 
   const resetWake = useCallback(() => {
     wakeRef.current = false;
     setWakeWordDetected(false);
-    clearTimeout(timeoutRef.current);
+    clearTimeout(wakeTimeout.current);
   }, []);
 
-  const fireCommand = useCallback((command) => {
-    const now = Date.now();
-    if (now - lastCmdRef.current < 1500) return;   // drop duplicate from the other instance
-    lastCmdRef.current = now;
-    resetWake();
-    onCommandRef.current?.(command);
-  }, [resetWake]);
+  // ── Send accumulated audio to Whisper ──────────────────────────────────────
+  const sendAudio = useCallback(async () => {
+    clearTimeout(silenceTimer.current);
+    clearTimeout(maxTimer.current);
+    clearTimeout(confirmTimer.current);
 
-  const startLang = useCallback((lang) => {
-    if (!supported) return null;
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const r = new SpeechRecognition();
-    r.continuous      = true;
-    r.interimResults  = true;
-    r.lang            = lang;
-    r.maxAlternatives = 1;
+    const chunks = vadBuffer.current.splice(0);
+    if (chunks.length === 0) { vadState.current = 'idle'; return; }
+    vadState.current = 'idle';
 
-    r.onstart = () => {
-      setListening(true);
-      onListeningRef.current?.(true);
-    };
+    // Flatten to one Int16Array
+    const total   = chunks.reduce((n, c) => n + c.length, 0);
+    const samples = new Int16Array(total);
+    let off = 0;
+    for (const c of chunks) { samples.set(c, off); off += c.length; }
 
-    r.onresult = (event) => {
-      const results = Array.from(event.results);
-      const last    = results[results.length - 1];
-      const text    = last[0].transcript.trim().toLowerCase();
-      setTranscript(text);
+    try {
+      const wav  = encodeWAV(samples, SAMPLE_RATE);
+      const resp = await fetch('/api/voice/transcribe', { method: 'POST', body: wav,
+        headers: { 'Content-Type': 'audio/wav' } });
+      if (!resp.ok) return;
+
+      const { text } = await resp.json();
+      if (!text) return;
+
+      const t = text.trim().toLowerCase();
+      setTranscript(t);
+      console.log('[Voice]', t);
 
       if (!wakeRef.current) {
-        const conf    = last[0].confidence ?? 1;
-        const hasWake = conf >= WAKE_CONFIDENCE && WAKE_WORDS.some(w => text.includes(w));
-        if (hasWake) {
+        if (WAKE_WORDS.some(w => t.includes(w))) {
           wakeRef.current = true;
           setWakeWordDetected(true);
-          let cmd = text;
+          // command might be in the same utterance, after the wake word
+          let cmd = t;
           for (const w of WAKE_WORDS) cmd = cmd.replace(w, '').trim();
-          if (cmd.length > 2 && last.isFinal) { fireCommand(cmd); return; }
-          clearTimeout(timeoutRef.current);
-          timeoutRef.current = setTimeout(resetWake, 8000);
+          if (cmd.length > 2) { resetWake(); onCommandRef.current?.(cmd); return; }
+          clearTimeout(wakeTimeout.current);
+          wakeTimeout.current = setTimeout(resetWake, 8000);
         }
-        return;
-      }
-
-      if (last.isFinal) {
-        let cmd = text;
+      } else {
+        // we're in command mode — this utterance is the command
+        let cmd = t;
         for (const w of WAKE_WORDS) cmd = cmd.replace(w, '').trim();
-        if (cmd.length > 2) fireCommand(cmd);
+        if (cmd.length > 2) { resetWake(); onCommandRef.current?.(cmd); }
       }
-    };
-
-    r.onerror = (event) => {
-      if (event.error === 'no-speech') return;
-      if (event.error === 'audio-capture') {
-        // Browser doesn't support parallel mic streams — silently drop this language
-        delete instancesRef.current[lang];
-        return;
-      }
-      console.warn('[Voice]', lang, event.error);
-      onError?.(event.error);
-    };
-
-    r.onend = () => {
-      // Only auto-restart if we're still the registered instance for this language
-      if (instancesRef.current[lang] !== r) return;
-      setTimeout(() => {
-        if (instancesRef.current[lang] !== r) return;
-        const nr = startLang(lang);
-        if (nr) instancesRef.current[lang] = nr;
-        else delete instancesRef.current[lang];
-      }, 500);
-      if (Object.keys(instancesRef.current).length === 0) {
-        setListening(false);
-        onListeningRef.current?.(false);
-      }
-    };
-
-    try { r.start(); return r; } catch { return null; }
-  }, [supported, onError, fireCommand, resetWake]);
-
-  const start = useCallback(() => {
-    if (!supported || Object.keys(instancesRef.current).length > 0) return;
-    for (const lang of LANGS) {
-      const r = startLang(lang);
-      if (r) instancesRef.current[lang] = r;
+    } catch (err) {
+      console.warn('[Voice] transcribe error:', err);
     }
-  }, [supported, startLang]);
+  }, [resetWake]);
+
+  // ── AudioWorklet message handler (called per ~128-sample chunk) ────────────
+  const handleChunk = useCallback((int16) => {
+    const energy = rms(int16);
+
+    if (vadState.current === 'idle') {
+      if (energy > ENERGY_THRESHOLD) {
+        vadState.current = 'confirming';
+        vadBuffer.current = [int16];
+        confirmTimer.current = setTimeout(() => {
+          // If we're still in confirming state after SPEECH_CONFIRM_MS, promote to recording
+          if (vadState.current === 'confirming') {
+            vadState.current = 'recording';
+            maxTimer.current = setTimeout(sendAudio, MAX_DURATION_MS);
+          }
+        }, SPEECH_CONFIRM_MS);
+      }
+    } else if (vadState.current === 'confirming') {
+      vadBuffer.current.push(int16);
+      if (energy <= ENERGY_THRESHOLD) {
+        // Was just noise — abort
+        vadState.current = 'idle';
+        vadBuffer.current = [];
+        clearTimeout(confirmTimer.current);
+      }
+    } else if (vadState.current === 'recording') {
+      vadBuffer.current.push(int16);
+      if (energy <= ENERGY_THRESHOLD) {
+        vadState.current = 'silence';
+        silenceTimer.current = setTimeout(sendAudio, SILENCE_END_MS);
+      }
+    } else if (vadState.current === 'silence') {
+      vadBuffer.current.push(int16);
+      if (energy > ENERGY_THRESHOLD) {
+        // Speech resumed — cancel the silence timer and go back to recording
+        vadState.current = 'recording';
+        clearTimeout(silenceTimer.current);
+      }
+    }
+  }, [sendAudio]);
+
+  // ── Start mic + AudioWorklet pipeline ──────────────────────────────────────
+  const start = useCallback(async () => {
+    if (audioCtxRef.current) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { sampleRate: SAMPLE_RATE, channelCount: 1,
+                 echoCancellation: true, noiseSuppression: true },
+      });
+      streamRef.current = stream;
+
+      const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
+      await ctx.audioWorklet.addModule('/audio-processor.js');
+      audioCtxRef.current = ctx;
+
+      const source = ctx.createMediaStreamSource(stream);
+      const worklet = new AudioWorkletNode(ctx, 'pcm-processor');
+      source.connect(worklet);
+      workletRef.current = worklet;
+
+      worklet.port.onmessage = ({ data }) => handleChunk(new Int16Array(data));
+
+      setListening(true);
+      onListening?.(true);
+      console.log('[Voice] Whisper mic pipeline started');
+    } catch (err) {
+      console.error('[Voice] Failed to start:', err);
+      onError?.(err.message);
+    }
+  }, [handleChunk, onListening, onError]);
 
   const stop = useCallback(() => {
-    Object.values(instancesRef.current).forEach(r => { try { r.stop(); } catch {} });
-    instancesRef.current = {};
-    clearTimeout(timeoutRef.current);
+    clearTimeout(silenceTimer.current);
+    clearTimeout(maxTimer.current);
+    clearTimeout(confirmTimer.current);
+    clearTimeout(wakeTimeout.current);
+    workletRef.current?.disconnect();
+    workletRef.current = null;
+    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current = null;
+    audioCtxRef.current?.close();
+    audioCtxRef.current = null;
+    vadState.current = 'idle';
+    vadBuffer.current = [];
+    resetWake();
     setListening(false);
-    onListeningRef.current?.(false);
-  }, []);
+    onListening?.(false);
+  }, [resetWake, onListening]);
 
   useEffect(() => () => stop(), [stop]);
 
-  return { listening, transcript, wakeWordDetected, start, stop, supported };
+  return { listening, transcript, wakeWordDetected, start, stop, supported: true };
 }

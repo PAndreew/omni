@@ -21,6 +21,7 @@ import { startScheduler } from './services/scheduler.js';
 import { startCalendarSync } from './services/calendar.js';
 import spotifyRouter from './routes/spotify.js';
 import { initAgent, processVoiceCommand } from './services/agent.js';
+import { startWhisper } from './services/whisper.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3001;
@@ -74,6 +75,18 @@ app.post('/api/voice/command', async (req, res) => {
   res.json({ reply });
 });
 
+// Whisper transcription proxy — receives raw WAV, forwards to local whisper_server.py
+app.post('/api/voice/transcribe', express.raw({ type: 'audio/*', limit: '50mb' }), async (req, res) => {
+  try {
+    const form = new FormData();
+    form.append('file', new Blob([req.body], { type: 'audio/wav' }), 'audio.wav');
+    const resp = await fetch('http://127.0.0.1:8765/inference', { method: 'POST', body: form });
+    res.json(await resp.json());
+  } catch (err) {
+    res.status(503).json({ error: 'Whisper unavailable', detail: err.message });
+  }
+});
+
 // Serve built frontend in production
 const clientDist  = path.join(__dirname, '../client/dist');
 const serverPublic = path.join(__dirname, 'public');
@@ -121,7 +134,7 @@ io.on('connection', (socket) => {
   
   // Debug all incoming events
   socket.onAny((event, ...args) => {
-    if (!event.startsWith('audio:')) { // skip noisy audio updates
+    if (!event.startsWith('audio:')) {
        console.log(`[WS][${socket.id}] Event: ${event}`, JSON.stringify(args));
     }
   });
@@ -177,6 +190,7 @@ startAudioBridge(io);
 startScheduler(io);
 startCalendarSync(io);
 initAgent(io);
+startWhisper();
 
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🖥️  OmniWall server running at http://0.0.0.0:${PORT}`);
