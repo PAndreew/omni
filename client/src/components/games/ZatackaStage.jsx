@@ -86,7 +86,7 @@ export default function ZatackaStage({ open, config, onClose }) {
       return {
         x: Math.floor(cols / 2 + Math.cos(angle) * cols * 0.28),
         y: Math.floor(rows / 2 + Math.sin(angle) * rows * 0.28),
-        dir: idx % 2 === 0 ? 0 : 2,
+        dir: Math.floor(Math.random() * 4),
       };
     });
 
@@ -125,6 +125,7 @@ export default function ZatackaStage({ open, config, onClose }) {
     if (!state) return;
     gameRef.current = state;
     setRoundState('running');
+    setRunning(true);
     setStatusLine('');
     lastTimeRef.current = performance.now();
     accRef.current = 0;
