@@ -27,7 +27,8 @@ async def inference(request):
         return web.json_response({'error': 'No file'}, status=400)
 
     raw = audio_file.file.read()
-    suffix = '.wav'
+    fname = getattr(audio_file, 'filename', 'audio.wav') or 'audio.wav'
+    import os as _os; suffix = _os.path.splitext(fname)[1] or '.wav'
 
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
         f.write(raw)
@@ -39,6 +40,7 @@ async def inference(request):
             language=None,      # auto-detect (en / hu / …)
             beam_size=5,
             vad_filter=True,    # skip pure-silence segments
+            initial_prompt="Hey Omni, okay Omni, hi Omni, hej Omni.",
         )
         text = ' '.join(s.text for s in segments).strip()
         print(f'[Whisper] [{info.language}] {text!r}', flush=True)

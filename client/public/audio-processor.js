@@ -8,7 +8,8 @@ class PCMProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < ch.length; i++) {
       out[i] = Math.max(-32768, Math.min(32767, ch[i] * 32768));
     }
-    this.port.postMessage(out.buffer, [out.buffer]);
+    // Use .slice() copy — Safari drops transferred ArrayBuffers in AudioWorklet
+    this.port.postMessage(out.buffer.slice(0));
     return true;
   }
 }

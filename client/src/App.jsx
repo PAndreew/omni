@@ -129,11 +129,26 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [navigate, widgetMode, exitWidget]);
 
-  useSocket('cec:right',  () => { if (!cecKeyboardOpen) { if (widgetMode) widgetStep('next'); else navigate('right'); } });
-  useSocket('cec:left',   () => { if (!cecKeyboardOpen) { if (widgetMode) widgetStep('prev'); else navigate('left'); } });
-  useSocket('cec:down',   () => { if (!cecKeyboardOpen) { if (widgetMode) widgetStep('next'); else navigate('down'); } });
-  useSocket('cec:up',     () => { if (!cecKeyboardOpen) { if (widgetMode) widgetStep('prev'); else navigate('up'); } });
-  useSocket('cec:select', () => { if (!cecKeyboardOpen) { if (widgetMode) widgetActivate(); else enterWidget(); } });
+  useSocket('cec:right',  () => { 
+    console.log('[CEC] right', { cecKeyboardOpen, widgetMode });
+    if (!cecKeyboardOpen) { if (widgetMode) widgetStep('next'); else navigate('right'); } 
+  });
+  useSocket('cec:left',   () => { 
+    console.log('[CEC] left', { cecKeyboardOpen, widgetMode });
+    if (!cecKeyboardOpen) { if (widgetMode) widgetStep('prev'); else navigate('left'); } 
+  });
+  useSocket('cec:down',   () => { 
+    console.log('[CEC] down', { cecKeyboardOpen, widgetMode });
+    if (!cecKeyboardOpen) { if (widgetMode) widgetStep('next'); else navigate('down'); } 
+  });
+  useSocket('cec:up',     () => { 
+    console.log('[CEC] up', { cecKeyboardOpen, widgetMode });
+    if (!cecKeyboardOpen) { if (widgetMode) widgetStep('prev'); else navigate('up'); } 
+  });
+  useSocket('cec:select', () => { 
+    console.log('[CEC] select', { cecKeyboardOpen, widgetMode });
+    if (!cecKeyboardOpen) { if (widgetMode) widgetActivate(); else enterWidget(); } 
+  });
   useSocket('cec:back',   () => {
     if (showLogin) setShowLogin(false);
     else if (showSettings) setShowSettings(false);
@@ -213,7 +228,7 @@ export default function App() {
   };
 
   const openAdmin  = () => setShowLogin(true);
-  const openRemote = () => window.open(`${window.location.protocol}//${window.location.hostname}:3001/remote`, '_blank');
+  const openRemote = () => window.open('/remote', '_blank');
   const toggleGames = () => setShowGames(prev => !prev);
   const launchGame = (gameId, config) => {
     setActiveGame(gameId);

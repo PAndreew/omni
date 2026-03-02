@@ -70,7 +70,9 @@ app.get('/api/audio/current', (req, res) => res.json(getCurrentTrack()));
 // Voice command endpoint — frontend sends parsed command text
 app.post('/api/voice/command', async (req, res) => {
   const { text } = req.body;
+  console.log(`[Voice] Processing command: "${text}"`);
   const reply = await processVoiceCommand(text?.toLowerCase() || '');
+  console.log(`[Voice] Agent reply: "${reply}"`);
   io.emit('voice:reply', { text: reply });
   res.json({ reply });
 });
@@ -78,8 +80,10 @@ app.post('/api/voice/command', async (req, res) => {
 // Whisper transcription proxy — receives raw WAV, forwards to local whisper_server.py
 app.post('/api/voice/transcribe', express.raw({ type: 'audio/*', limit: '50mb' }), async (req, res) => {
   try {
+    const mime = req.headers['content-type'] || 'audio/webm';
+    const ext  = mime.includes('mp4') ? '.mp4' : mime.includes('ogg') ? '.ogg' : mime.includes('wav') ? '.wav' : '.webm';
     const form = new FormData();
-    form.append('file', new Blob([req.body], { type: 'audio/wav' }), 'audio.wav');
+    form.append('file', new Blob([req.body], { type: mime }), `audio${ext}`);
     const resp = await fetch('http://127.0.0.1:8765/inference', { method: 'POST', body: form });
     res.json(await resp.json());
   } catch (err) {
@@ -130,7 +134,7 @@ function spawnPty(id, cols, rows, socket) {
 
 // Socket.io
 io.on('connection', (socket) => {
-  console.log(`[WS] Client connected: ${socket.id}`);
+  console.log(`[WS] Client connected: ${socket.id} from ${socket.handshake.address} (UA: ${socket.handshake.headers['user-agent']})`);
   
   // Debug all incoming events
   socket.onAny((event, ...args) => {

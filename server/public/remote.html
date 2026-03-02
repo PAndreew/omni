@@ -325,8 +325,12 @@
 <script src="/socket.io/socket.io.js"></script>
 <script>
   // Connect to the Express/socket.io server.
-  const origin = window.location.origin.replace(':5173', ':3001');
-  const socket = io(origin, { transports: ['websocket'], reconnection: true });
+  // We use relative path or detect origin correctly for Tailscale/Proxies.
+  const socket = io(window.location.origin, { 
+    path: '/socket.io',
+    transports: ['websocket'], 
+    reconnection: true 
+  });
 
   const dot        = document.getElementById('dot');
   const statusText = document.getElementById('status-text');

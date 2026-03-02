@@ -8,10 +8,12 @@ export default function VoiceAssistant({ focused }) {
   const [transcript, setTranscript] = useState('');
   const [reply, setReply] = useState('');
   const [active, setActive] = useState(false);
+  const [error, setError] = useState('');
 
   const { speak } = useTTS();
 
   const handleCommand = useCallback(async (text) => {
+    console.log('[VoiceAssistant] handleCommand:', text);
     setStatus('processing');
     setTranscript(text);
     try {
@@ -20,12 +22,15 @@ export default function VoiceAssistant({ focused }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
       });
-      const { reply: r } = await res.json();
+      const data = await res.json();
+      console.log('[VoiceAssistant] Response from server:', data);
+      const { reply: r } = data;
       setReply(r);
       setStatus('speaking');
       speak(r);
       setTimeout(() => setStatus(active ? 'listening' : 'idle'), 3000);
-    } catch {
+    } catch (err) {
+      console.error('[VoiceAssistant] Command error:', err);
       setStatus('idle');
     }
   }, [speak, active]);
@@ -35,9 +40,10 @@ export default function VoiceAssistant({ focused }) {
     speak(text);
   });
 
-  const { listening, wakeWordDetected, supported, start, stop } = useVoiceRecognition({
+  const { listening, wakeWordDetected, chunkCount, supported, start, stop } = useVoiceRecognition({
     onCommand: handleCommand,
     onListening: (v) => setStatus(v ? 'listening' : 'idle'),
+    onError: (msg) => { setError(msg); setActive(false); setStatus('idle'); },
   });
 
   useEffect(() => {
@@ -45,14 +51,21 @@ export default function VoiceAssistant({ focused }) {
     else if (listening) setStatus('listening');
   }, [wakeWordDetected, listening]);
 
-  // Auto-start on mount (kiosk). On mobile Safari this silently fails — user must tap Start.
+  // Auto-start only on non-touch devices (kiosk). Mobile Safari needs a user gesture first.
   useEffect(() => {
-    start().then(() => setActive(true)).catch(() => {});
+    if (!window.matchMedia('(pointer: coarse)').matches) {
+      start().then(() => setActive(true)).catch(() => {});
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toggle = useCallback(() => {
+  const toggle = useCallback(async () => {
+    setError('');
     if (active) { stop(); setActive(false); setStatus('idle'); }
-    else { start(); setActive(true); setStatus('listening'); }
+    else {
+      const ok = await start();
+      if (ok) setActive(true);
+      else setStatus('idle');
+    }
   }, [active, start, stop]);
 
   const MicIcon = status === 'processing' ? Loader
@@ -90,6 +103,14 @@ export default function VoiceAssistant({ focused }) {
           </div>
           {transcript && status !== 'speaking' && (
             <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>Last: "{transcript}"</div>
+          )}
+          {error && (
+            <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>⚠ {error}</div>
+          )}
+          {active && (
+            <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2, fontFamily: 'monospace' }}>
+              chunks: {chunkCount} · VAD: {status === 'wake' ? 'READY' : status === 'listening' ? 'WAITING' : status}
+            </div>
           )}
         </div>
 

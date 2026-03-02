@@ -42,10 +42,15 @@ export default function NowPlaying({ focused }) {
   }, [track?.status, track?.duration]);
 
   useSocket('cec:select', () => {
-    if (!focused) return;
-    if (showSearch && !showKeyboard && searchResults.length) playTrack(searchResults[resultIdx].uri);
-    else if (!showSearch && !showKeyboard) setShowKeyboard(true);
+    if (!focused || !showSearch || showKeyboard) return;
+    if (searchResults.length) playTrack(searchResults[resultIdx].uri);
   });
+
+  // Use a dedicated button or a specific interaction to open keyboard in widget mode
+  // instead of hijacking the global select event which is used to enter the widget.
+  const openSearch = () => {
+    if (focused) setShowKeyboard(true);
+  };
 
   useSocket('cec:up',   () => { if (focused && showSearch && !showKeyboard && searchResults.length) setResultIdx(i => Math.max(0, i - 1)); });
   useSocket('cec:down', () => { if (focused && showSearch && !showKeyboard && searchResults.length) setResultIdx(i => Math.min(searchResults.length - 1, i + 1)); });
@@ -134,8 +139,14 @@ export default function NowPlaying({ focused }) {
         <>
           <HeaderRow />
           <div className="np-search-container">
-            <input className="input" placeholder="Search Spotify..."
-              value={search} onChange={e => { setSearch(e.target.value); doSearch(e.target.value); }} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input className="input" placeholder="Search Spotify..."
+                value={search} onChange={e => { setSearch(e.target.value); doSearch(e.target.value); }}
+                style={{ flex: 1 }} />
+              <button className="btn" onClick={() => setShowKeyboard(true)} style={{ padding: '0 12px' }}>
+                <Music size={16} />
+              </button>
+            </div>
             <div className="np-search-results">
               {searchResults.map((t, i) => (
                 <div key={t.id} className={`glass np-search-item${i === resultIdx && focused ? ' cec-active' : ''}`} onClick={() => playTrack(t.uri)}>

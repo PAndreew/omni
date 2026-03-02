@@ -1,37 +1,24 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WAKE_WORDS         = ['hey omni', 'okay omni', 'hi omni', 'hej omni'];
-const SAMPLE_RATE        = 16000;
-const ENERGY_THRESHOLD   = 0.012;   // RMS level that counts as speech
-const SPEECH_CONFIRM_MS  = 250;     // must be loud for this long before we start recording
-const SILENCE_END_MS     = 1300;    // silence after speech → send for transcription
-const MAX_DURATION_MS    = 9000;    // force-send even if no silence (long utterance)
+const WAKE_WORDS        = ['hey omni', 'okay omni', 'hi omni', 'hej omni'];
 
-// ── WAV encoder ───────────────────────────────────────────────────────────────
-function encodeWAV(samples /* Int16Array */, sampleRate) {
-  const buf  = new ArrayBuffer(44 + samples.length * 2);
-  const view = new DataView(buf);
-  const str  = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
-  str(0,  'RIFF');  view.setUint32(4,  36 + samples.length * 2, true);
-  str(8,  'WAVE');  str(12, 'fmt ');
-  view.setUint32(16, 16, true);          // chunk size
-  view.setUint16(20, 1,  true);          // PCM
-  view.setUint16(22, 1,  true);          // mono
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2,  true);          // block align
-  view.setUint16(34, 16, true);          // bits per sample
-  str(36, 'data'); view.setUint32(40, samples.length * 2, true);
-  for (let i = 0; i < samples.length; i++) view.setInt16(44 + i * 2, samples[i], true);
-  return new Blob([buf], { type: 'audio/wav' });
+// Strip Unicode diacritics so "Omnę" → "omne", "héj" → "hej", etc.
+function stripDiacritics(s) {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-// ── RMS energy of an Int16 chunk ──────────────────────────────────────────────
-function rms(int16) {
-  let sum = 0;
-  for (let i = 0; i < int16.length; i++) sum += (int16[i] / 32768) ** 2;
-  return Math.sqrt(sum / int16.length);
+// Fuzzy wake word — catches Whisper mishearings of "omni"
+function matchesWakeWord(norm) {
+  if (WAKE_WORDS.some(w => norm.includes(w))) return true;
+  // "hey/okay/ok/hi/hej" + anything starting with "omn"
+  const hasGreeting = /\b(hey|okay|ok|hi|hej)\b/.test(norm);
+  const hasOmni     = /\bomn/.test(norm);
+  return hasGreeting && hasOmni;
 }
+const ENERGY_THRESHOLD  = 0.008;  // RMS from AnalyserNode byte data (0–1 normalised)
+const SPEECH_CONFIRM_MS = 250;
+const SILENCE_END_MS    = 1300;
+const MAX_DURATION_MS   = 9000;
 
 // ── TTS ───────────────────────────────────────────────────────────────────────
 export function useTTS() {
@@ -60,25 +47,29 @@ export function useVoiceRecognition({ onCommand, onListening, onError } = {}) {
   const [listening,        setListening]        = useState(false);
   const [transcript,       setTranscript]       = useState('');
   const [wakeWordDetected, setWakeWordDetected] = useState(false);
+  const [chunkCount,       setChunkCount]       = useState(0);
 
-  const onCommandRef = useRef(onCommand);
-  useEffect(() => { onCommandRef.current = onCommand; }, [onCommand]);
+  const onCommandRef  = useRef(onCommand);
+  const onListeningRef = useRef(onListening);
+  const onErrorRef     = useRef(onError);
+  useEffect(() => { onCommandRef.current  = onCommand;  }, [onCommand]);
+  useEffect(() => { onListeningRef.current = onListening; }, [onListening]);
+  useEffect(() => { onErrorRef.current    = onError;    }, [onError]);
 
-  // audio pipeline refs
-  const audioCtxRef = useRef(null);
-  const streamRef   = useRef(null);
-  const workletRef  = useRef(null);
+  const audioCtxRef  = useRef(null);
+  const streamRef    = useRef(null);
+  const stopPollRef  = useRef(null);   // () => void — tears down interval + recorder
 
-  // VAD state
-  const vadState      = useRef('idle');   // 'idle' | 'confirming' | 'recording' | 'silence'
-  const vadBuffer     = useRef([]);       // accumulated Int16 samples for current utterance
-  const silenceTimer  = useRef(null);
-  const maxTimer      = useRef(null);
-  const confirmTimer  = useRef(null);
+  // VAD state (used inside the poll interval closure)
+  const vadState     = useRef('idle'); // idle | confirming | recording | silence
+  const silenceTimer = useRef(null);
+  const maxTimer     = useRef(null);
+  const confirmTimer = useRef(null);
+  const recorderRef  = useRef(null);
+  const chunksRef    = useRef([]);
 
-  // wake-word state
-  const wakeRef     = useRef(false);
-  const wakeTimeout = useRef(null);
+  const wakeRef      = useRef(false);
+  const wakeTimeout  = useRef(null);
 
   const resetWake = useCallback(() => {
     wakeRef.current = false;
@@ -86,147 +77,219 @@ export function useVoiceRecognition({ onCommand, onListening, onError } = {}) {
     clearTimeout(wakeTimeout.current);
   }, []);
 
-  // ── Send accumulated audio to Whisper ──────────────────────────────────────
-  const sendAudio = useCallback(async () => {
-    clearTimeout(silenceTimer.current);
-    clearTimeout(maxTimer.current);
-    clearTimeout(confirmTimer.current);
+  // ── Process transcript from Whisper ────────────────────────────────────────
+  const handleTranscript = useCallback((text) => {
+    const originalText = text.trim();
+    const t = originalText.toLowerCase();
+    if (!t) return;
+    setTranscript(t);
+    console.log('[Voice] Raw transcript:', t);
 
-    const chunks = vadBuffer.current.splice(0);
-    if (chunks.length === 0) { vadState.current = 'idle'; return; }
-    vadState.current = 'idle';
+    // Normalize for wake word check: strip diacritics, punctuation, extra spaces
+    const normalized = stripDiacritics(t).replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").replace(/\s{2,}/g, " ").trim();
+    const matchesWake = matchesWakeWord(normalized);
 
-    // Flatten to one Int16Array
-    const total   = chunks.reduce((n, c) => n + c.length, 0);
-    const samples = new Int16Array(total);
-    let off = 0;
-    for (const c of chunks) { samples.set(c, off); off += c.length; }
+    if (!wakeRef.current) {
+      if (matchesWake) {
+        console.log('[Voice] Wake word detected in:', normalized);
+        wakeRef.current = true;
+        setWakeWordDetected(true);
+        
+        // Strip wake words
+        let cmd = normalized;
+        for (const w of WAKE_WORDS) cmd = cmd.replace(w, '');
+        cmd = cmd.trim();
 
-    try {
-      const wav  = encodeWAV(samples, SAMPLE_RATE);
-      const resp = await fetch('/api/voice/transcribe', { method: 'POST', body: wav,
-        headers: { 'Content-Type': 'audio/wav' } });
-      if (!resp.ok) return;
-
-      const { text } = await resp.json();
-      if (!text) return;
-
-      const t = text.trim().toLowerCase();
-      setTranscript(t);
-      console.log('[Voice]', t);
-
-      if (!wakeRef.current) {
-        if (WAKE_WORDS.some(w => t.includes(w))) {
-          wakeRef.current = true;
-          setWakeWordDetected(true);
-          // command might be in the same utterance, after the wake word
-          let cmd = t;
-          for (const w of WAKE_WORDS) cmd = cmd.replace(w, '').trim();
-          if (cmd.length > 2) { resetWake(); onCommandRef.current?.(cmd); return; }
-          clearTimeout(wakeTimeout.current);
-          wakeTimeout.current = setTimeout(resetWake, 8000);
+        // If command is in same transcript
+        if (cmd.length > 2) { 
+          console.log('[Voice] Command found in same transcript:', cmd);
+          resetWake(); 
+          let finalCmd = originalText;
+          for (const w of WAKE_WORDS) {
+            const re = new RegExp(`\\b${w}\\b`, 'gi');
+            finalCmd = finalCmd.replace(re, '');
+          }
+          finalCmd = finalCmd.replace(/^[.,\s!]+|[.,\s!]+$/g, '').trim();
+          onCommandRef.current?.(finalCmd); 
+          return; 
         }
-      } else {
-        // we're in command mode — this utterance is the command
-        let cmd = t;
-        for (const w of WAKE_WORDS) cmd = cmd.replace(w, '').trim();
-        if (cmd.length > 2) { resetWake(); onCommandRef.current?.(cmd); }
+        
+        clearTimeout(wakeTimeout.current);
+        wakeTimeout.current = setTimeout(() => {
+          console.log('[Voice] Wake timeout reached');
+          resetWake();
+        }, 8000);
       }
-    } catch (err) {
-      console.warn('[Voice] transcribe error:', err);
+    } else {
+      console.log('[Voice] Processing command in wake mode:', t);
+      let finalCmd = originalText;
+      for (const w of WAKE_WORDS) {
+        const re = new RegExp(`\\b${w}\\b`, 'gi');
+        finalCmd = finalCmd.replace(re, '');
+      }
+      finalCmd = finalCmd.replace(/^[.,\s!]+|[.,\s!]+$/g, '').trim();
+      
+      if (finalCmd.length > 2) { 
+        console.log('[Voice] Shipping command:', finalCmd);
+        resetWake(); 
+        onCommandRef.current?.(finalCmd); 
+      }
     }
   }, [resetWake]);
 
-  // ── AudioWorklet message handler (called per ~128-sample chunk) ────────────
-  const handleChunk = useCallback((int16) => {
-    const energy = rms(int16);
-
-    if (vadState.current === 'idle') {
-      if (energy > ENERGY_THRESHOLD) {
-        vadState.current = 'confirming';
-        vadBuffer.current = [int16];
-        confirmTimer.current = setTimeout(() => {
-          // If we're still in confirming state after SPEECH_CONFIRM_MS, promote to recording
-          if (vadState.current === 'confirming') {
-            vadState.current = 'recording';
-            maxTimer.current = setTimeout(sendAudio, MAX_DURATION_MS);
-          }
-        }, SPEECH_CONFIRM_MS);
-      }
-    } else if (vadState.current === 'confirming') {
-      vadBuffer.current.push(int16);
-      if (energy <= ENERGY_THRESHOLD) {
-        // Was just noise — abort
-        vadState.current = 'idle';
-        vadBuffer.current = [];
-        clearTimeout(confirmTimer.current);
-      }
-    } else if (vadState.current === 'recording') {
-      vadBuffer.current.push(int16);
-      if (energy <= ENERGY_THRESHOLD) {
-        vadState.current = 'silence';
-        silenceTimer.current = setTimeout(sendAudio, SILENCE_END_MS);
-      }
-    } else if (vadState.current === 'silence') {
-      vadBuffer.current.push(int16);
-      if (energy > ENERGY_THRESHOLD) {
-        // Speech resumed — cancel the silence timer and go back to recording
-        vadState.current = 'recording';
-        clearTimeout(silenceTimer.current);
-      }
+  // ── Send recorded blob to Whisper ──────────────────────────────────────────
+  const sendBlob = useCallback(async (blob) => {
+    try {
+      const resp = await fetch('/api/voice/transcribe', {
+        method: 'POST', body: blob,
+        headers: { 'Content-Type': blob.type || 'audio/webm' },
+      });
+      if (!resp.ok) return;
+      const { text } = await resp.json();
+      if (text) handleTranscript(text);
+    } catch (err) {
+      console.warn('[Voice] transcribe error:', err);
     }
-  }, [sendAudio]);
+  }, [handleTranscript]);
 
-  // ── Start mic + AudioWorklet pipeline ──────────────────────────────────────
+  // ── Stop recorder and ship the blob ────────────────────────────────────────
+  const stopAndSend = useCallback(() => {
+    clearTimeout(silenceTimer.current); silenceTimer.current = null;
+    clearTimeout(maxTimer.current);     maxTimer.current     = null;
+    clearTimeout(confirmTimer.current); confirmTimer.current = null;
+    const rec = recorderRef.current;
+    if (rec && rec.state === 'recording') {
+      rec.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType });
+        chunksRef.current = [];
+        sendBlob(blob);
+      };
+      rec.stop();
+    }
+    vadState.current = 'idle';
+  }, [sendBlob]);
+
+  // ── Start ──────────────────────────────────────────────────────────────────
   const start = useCallback(async () => {
-    if (audioCtxRef.current) return;
+    onErrorRef.current?.('S1');
+    if (audioCtxRef.current?.state === 'running') return true;
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+
+    // Must create AudioContext synchronously inside the gesture handler (iOS Safari)
+    const ctx = new AudioContext();
+    // Unlock iOS audio — play a 1-sample silent buffer before any await
+    const unlock = ctx.createBuffer(1, 1, ctx.sampleRate);
+    const unlockSrc = ctx.createBufferSource();
+    unlockSrc.buffer = unlock;
+    unlockSrc.connect(ctx.destination);
+    unlockSrc.start(0);
+    await ctx.resume();
+    onErrorRef.current?.(`S2 ctx=${ctx.state} rate=${ctx.sampleRate}`);
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { sampleRate: SAMPLE_RATE, channelCount: 1,
-                 echoCancellation: true, noiseSuppression: true },
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
       });
       streamRef.current = stream;
+      onErrorRef.current?.('S3 mic ok');
 
-      const ctx = new AudioContext({ sampleRate: SAMPLE_RATE });
-      if (ctx.state === 'suspended') await ctx.resume();
-      await ctx.audioWorklet.addModule('/audio-processor.js');
+      // AnalyserNode for VAD — pull-based, works on iOS Safari
+      const source   = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      source.connect(analyser);
+      // Connect to destination so iOS keeps the audio graph alive
+      const gain = ctx.createGain(); gain.gain.value = 0;
+      analyser.connect(gain); gain.connect(ctx.destination);
+
+      const timeDomain = new Uint8Array(analyser.frequencyBinCount);
+
+      // MediaRecorder for capture — no PCM encoding needed
+      const recorder = new MediaRecorder(stream);
+      recorderRef.current = recorder;
+      chunksRef.current   = [];
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+
+      // VAD poll every 50 ms
+      const intervalId = setInterval(() => {
+        analyser.getByteTimeDomainData(timeDomain);
+        let sum = 0;
+        for (const v of timeDomain) { const n = (v - 128) / 128; sum += n * n; }
+        const energy = Math.sqrt(sum / timeDomain.length);
+        setChunkCount(n => n + 1); // shows AnalyserNode is alive
+
+        if (vadState.current === 'idle') {
+          if (energy > ENERGY_THRESHOLD) {
+            vadState.current = 'confirming';
+            confirmTimer.current = setTimeout(() => {
+              if (vadState.current === 'confirming') {
+                vadState.current = 'recording';
+                chunksRef.current = [];
+                recorder.start();
+                maxTimer.current = setTimeout(stopAndSend, MAX_DURATION_MS);
+              }
+            }, SPEECH_CONFIRM_MS);
+          }
+        } else if (vadState.current === 'confirming') {
+          if (energy <= ENERGY_THRESHOLD) {
+            vadState.current = 'idle';
+            clearTimeout(confirmTimer.current);
+          }
+        } else if (vadState.current === 'recording') {
+          if (energy <= ENERGY_THRESHOLD) {
+            vadState.current = 'silence';
+            silenceTimer.current = setTimeout(stopAndSend, SILENCE_END_MS);
+          }
+        } else if (vadState.current === 'silence') {
+          if (energy > ENERGY_THRESHOLD) {
+            vadState.current = 'recording';
+            clearTimeout(silenceTimer.current); silenceTimer.current = null;
+          }
+        }
+      }, 50);
+
+      stopPollRef.current = () => {
+        clearInterval(intervalId);
+        clearTimeout(silenceTimer.current);
+        clearTimeout(maxTimer.current);
+        clearTimeout(confirmTimer.current);
+        if (recorder.state !== 'inactive') recorder.stop();
+      };
       audioCtxRef.current = ctx;
 
-      const source = ctx.createMediaStreamSource(stream);
-      const worklet = new AudioWorkletNode(ctx, 'pcm-processor');
-      source.connect(worklet);
-      workletRef.current = worklet;
-
-      worklet.port.onmessage = ({ data }) => handleChunk(new Int16Array(data));
-
       setListening(true);
-      onListening?.(true);
-      console.log('[Voice] Whisper mic pipeline started');
+      onListeningRef.current?.(true);
+      onErrorRef.current?.('S4 interval running');
+      console.log('[Voice] AnalyserNode+MediaRecorder pipeline started, rate:', ctx.sampleRate);
+      return true;
     } catch (err) {
+      ctx.close().catch(() => {});
       console.error('[Voice] Failed to start:', err);
-      onError?.(err.message);
+      onErrorRef.current?.(String(err));
+      return false;
     }
-  }, [handleChunk, onListening, onError]);
+  }, [stopAndSend]);
 
+  // ── Stop ───────────────────────────────────────────────────────────────────
   const stop = useCallback(() => {
-    clearTimeout(silenceTimer.current);
-    clearTimeout(maxTimer.current);
-    clearTimeout(confirmTimer.current);
-    clearTimeout(wakeTimeout.current);
-    workletRef.current?.disconnect();
-    workletRef.current = null;
+    stopPollRef.current?.();
+    stopPollRef.current = null;
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     audioCtxRef.current?.close();
     audioCtxRef.current = null;
     vadState.current = 'idle';
-    vadBuffer.current = [];
+    recorderRef.current = null;
+    chunksRef.current   = [];
     resetWake();
     setListening(false);
-    onListening?.(false);
-  }, [resetWake, onListening]);
+    onListeningRef.current?.(false);
+  }, [resetWake]);
 
   useEffect(() => () => stop(), [stop]);
 
-  return { listening, transcript, wakeWordDetected, start, stop, supported: true };
+  return { listening, transcript, wakeWordDetected, chunkCount, start, stop, supported: true };
 }
