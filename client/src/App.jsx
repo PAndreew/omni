@@ -45,46 +45,77 @@ export default function App() {
   // D-pad / CEC navigation
   const navigate = useCallback((dir) => {
     setFocusIdx(prev => {
-      const cols = 3;
-      if (dir === 'right') return Math.min(prev + 1, TILES.length - 1);
-      if (dir === 'left')  return Math.max(prev - 1, 0);
-      if (dir === 'down') {
-        // bottom row is idx 6 (voice) and 7 (terminal) — treat as row 2 col 0 and col 1
-        if (prev >= 6) return prev; // already in bottom
-        if (prev <= 2) return prev === 0 ? 6 : 7; // clock→voice, weather/nowplaying→terminal
-        // row 1 (3,4,5) → voice=6, terminal=7, rss stays at 6 from col 2
-        const bottomTarget = prev === 3 ? 6 : prev === 4 ? 7 : 7;
-        return Math.min(bottomTarget, TILES.length - 1);
+      // Sidebar indices: -1 (Games), -2 (Remote), -3 (Settings)
+      if (dir === 'left') {
+        if (prev === 0) return -1;
+        if (prev === 3) return -2;
+        if (prev === 6) return -3;
+        if (prev < 0) return prev;
+        return Math.max(prev - 1, 0);
+      }
+      if (dir === 'right') {
+        if (prev === -1) return 0;
+        if (prev === -2) return 3;
+        if (prev === -3) return 6;
+        if (prev < 0) return prev;
+        return Math.min(prev + 1, TILES.length - 1);
       }
       if (dir === 'up') {
-        if (prev === 6) return 3; // voice → chores
-        if (prev === 7) return 5; // terminal → rss
-        return Math.max(prev - cols, 0);
+        if (prev === -1) return -1;
+        if (prev === -2) return -1;
+        if (prev === -3) return -2;
+        if (prev === 6) return 3;
+        if (prev === 7) return 5;
+        return Math.max(prev - 3, 0);
+      }
+      if (dir === 'down') {
+        if (prev === -1) return -2;
+        if (prev === -2) return -3;
+        if (prev === -3) return -3;
+        if (prev >= 6) return prev;
+        if (prev <= 2) return prev === 0 ? 6 : 7;
+        const bottomTarget = prev === 3 ? 6 : 7;
+        return Math.min(bottomTarget, TILES.length - 1);
       }
       return prev;
     });
   }, []);
 
-  // ── Widget-mode callbacks — declared before any hook that references them ──
-  const getTileFocusables = useCallback(() => {
-    const tile = document.querySelector(`[data-tile="${TILES[focusIdx]}"]`);
-    if (!tile) return [];
-    return Array.from(
-      tile.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href], textarea, select, [tabindex="0"]')
-    ).filter(el => {
-      const style = window.getComputedStyle(el);
-      if (style.display === 'none' || style.visibility === 'hidden') return false;
-      return true;
-    });
-  }, [focusIdx]);
+  const getFocusables = useCallback(() => {
+    // If a modal is open, focus only within it
+    const modal = document.querySelector('.modal, .settings-panel, .games-panel');
+    if (modal) {
+      return Array.from(
+        modal.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href], textarea, select, [tabindex="0"]')
+      ).filter(el => {
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        return true;
+      });
+    }
+
+    // Otherwise, if in widget mode, focus within the tile
+    if (widgetMode) {
+      const tile = document.querySelector(`[data-tile="${TILES[focusIdx]}"]`);
+      if (!tile) return [];
+      return Array.from(
+        tile.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href], textarea, select, [tabindex="0"]')
+      ).filter(el => {
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        return true;
+      });
+    }
+    return [];
+  }, [focusIdx, widgetMode]);
 
   const enterWidget = useCallback(() => {
     setWidgetMode(true);
     setTimeout(() => {
-      const els = getTileFocusables();
+      const els = getFocusables();
       if (els.length) { els[0].focus(); els[0].scrollIntoView({ block: 'nearest' }); }
     }, 60);
-  }, [getTileFocusables]);
+  }, [getFocusables]);
 
   const exitWidget = useCallback(() => {
     setWidgetMode(false);
@@ -92,7 +123,7 @@ export default function App() {
   }, []);
 
   const widgetStep = useCallback((dir) => {
-    const els = getTileFocusables();
+    const els = getFocusables();
     if (!els.length) return;
     const cur  = els.indexOf(document.activeElement);
     const next = dir === 'next'
@@ -100,7 +131,7 @@ export default function App() {
       : Math.max(cur <= 0 ? 0 : cur - 1, 0);
     els[next].focus();
     els[next].scrollIntoView({ block: 'nearest' });
-  }, [getTileFocusables]);
+  }, [getFocusables]);
 
   const widgetActivate = useCallback(() => {
     const el = document.activeElement;
@@ -121,7 +152,12 @@ export default function App() {
         if (isTerm) return;
 
         e.preventDefault();
-        if (!widgetMode) navigate(map[e.key]);
+        if (!widgetMode && !modalActive) {
+          navigate(map[e.key]);
+        } else {
+          const stepMap = { ArrowRight: 'next', ArrowDown: 'next', ArrowLeft: 'prev', ArrowUp: 'prev' };
+          widgetStep(stepMap[e.key]);
+        }
       }
       if (e.key === 'Escape' && widgetMode) exitWidget();
     };
@@ -129,25 +165,36 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [navigate, widgetMode, exitWidget]);
 
+  const modalActive = showLogin || showSettings || showGames;
+
   useSocket('cec:right',  () => { 
-    console.log('[CEC] right', { cecKeyboardOpen, widgetMode });
-    if (!cecKeyboardOpen) { if (widgetMode) widgetStep('next'); else navigate('right'); } 
+    console.log('[CEC] right', { cecKeyboardOpen, widgetMode, modalActive });
+    if (!cecKeyboardOpen) { if (modalActive || widgetMode) widgetStep('next'); else navigate('right'); } 
   });
   useSocket('cec:left',   () => { 
-    console.log('[CEC] left', { cecKeyboardOpen, widgetMode });
-    if (!cecKeyboardOpen) { if (widgetMode) widgetStep('prev'); else navigate('left'); } 
+    console.log('[CEC] left', { cecKeyboardOpen, widgetMode, modalActive });
+    if (!cecKeyboardOpen) { if (modalActive || widgetMode) widgetStep('prev'); else navigate('left'); } 
   });
   useSocket('cec:down',   () => { 
-    console.log('[CEC] down', { cecKeyboardOpen, widgetMode });
-    if (!cecKeyboardOpen) { if (widgetMode) widgetStep('next'); else navigate('down'); } 
+    console.log('[CEC] down', { cecKeyboardOpen, widgetMode, modalActive });
+    if (!cecKeyboardOpen) { if (modalActive || widgetMode) widgetStep('next'); else navigate('down'); } 
   });
   useSocket('cec:up',     () => { 
-    console.log('[CEC] up', { cecKeyboardOpen, widgetMode });
-    if (!cecKeyboardOpen) { if (widgetMode) widgetStep('prev'); else navigate('up'); } 
+    console.log('[CEC] up', { cecKeyboardOpen, widgetMode, modalActive });
+    if (!cecKeyboardOpen) { if (modalActive || widgetMode) widgetStep('prev'); else navigate('up'); } 
   });
   useSocket('cec:select', () => { 
-    console.log('[CEC] select', { cecKeyboardOpen, widgetMode });
-    if (!cecKeyboardOpen) { if (widgetMode) widgetActivate(); else enterWidget(); } 
+    console.log('[CEC] select', { cecKeyboardOpen, widgetMode, focusIdx, modalActive });
+    if (!cecKeyboardOpen) { 
+      if (modalActive || widgetMode) {
+        widgetActivate();
+      } else {
+        if (focusIdx === -1) toggleGames();
+        else if (focusIdx === -2) openRemote();
+        else if (focusIdx === -3) openAdmin();
+        else enterWidget();
+      }
+    } 
   });
   useSocket('cec:back',   () => {
     if (showLogin) setShowLogin(false);
@@ -240,17 +287,27 @@ export default function App() {
     setActiveGameConfig(null);
   };
 
+  // Auto-focus first element when modal opens
+  useEffect(() => {
+    if (modalActive) {
+      setTimeout(() => {
+        const els = getFocusables();
+        if (els.length) els[0].focus();
+      }, 100);
+    }
+  }, [modalActive, getFocusables]);
+
   return (
     <>
       <div className="shell">
         <nav className="sidebar">
-          <button className="sidebar-btn games-btn" onClick={toggleGames} title="Open games menu">
+          <button className={`sidebar-btn games-btn ${focusIdx === -1 ? 'focused' : ''}`} onClick={toggleGames} title="Open games menu">
             <Gamepad2 size={18} strokeWidth={1.5} />
           </button>
-          <button className="sidebar-btn" onClick={openRemote} title="Open remote control on this device">
+          <button className={`sidebar-btn ${focusIdx === -2 ? 'focused' : ''}`} onClick={openRemote} title="Open remote control on this device">
             <Smartphone size={18} strokeWidth={1.5} />
           </button>
-          <button className="sidebar-btn" onClick={openAdmin} title="Admin / Settings">
+          <button className={`sidebar-btn ${focusIdx === -3 ? 'focused' : ''}`} onClick={openAdmin} title="Admin / Settings">
             <Settings size={18} strokeWidth={1.5} />
           </button>
         </nav>
@@ -304,6 +361,7 @@ export default function App() {
         .sidebar { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; width: 48px; flex-shrink: 0; padding: 12px 0; border-right: 1px solid var(--border); gap: 12px; z-index: 10; }
         .sidebar-btn { width: 36px; height: 36px; background: transparent; border: none; color: var(--silver); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: color 0.2s; }
         .sidebar-btn:hover { color: var(--silver-light); }
+        .sidebar-btn.focused { color: var(--silver-light); outline: 2px solid var(--silver-light); outline-offset: -2px; }
         .games-btn { color: var(--silver-light); }
 
         .games-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 420; display: flex; align-items: flex-end; justify-content: flex-start; }

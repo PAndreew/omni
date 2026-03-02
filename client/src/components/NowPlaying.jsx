@@ -16,7 +16,6 @@ export default function NowPlaying({ focused }) {
   const [searchResults, setSearchResults] = useState([]);
   const [showSearch, setShowSearch]     = useState(false);
   const [showKeyboard, setShowKeyboard] = useState(false);
-  const [resultIdx, setResultIdx]       = useState(0);
   const [discoMode, setDiscoMode]       = useState(false);
   const [currentPos, setCurrentPos]     = useState(0);
   const intervalRef                     = useRef(null);
@@ -41,19 +40,11 @@ export default function NowPlaying({ focused }) {
     return () => clearInterval(intervalRef.current);
   }, [track?.status, track?.duration]);
 
-  useSocket('cec:select', () => {
-    if (!focused || !showSearch || showKeyboard) return;
-    if (searchResults.length) playTrack(searchResults[resultIdx].uri);
-  });
-
   // Use a dedicated button or a specific interaction to open keyboard in widget mode
   // instead of hijacking the global select event which is used to enter the widget.
   const openSearch = () => {
     if (focused) setShowKeyboard(true);
   };
-
-  useSocket('cec:up',   () => { if (focused && showSearch && !showKeyboard && searchResults.length) setResultIdx(i => Math.max(0, i - 1)); });
-  useSocket('cec:down', () => { if (focused && showSearch && !showKeyboard && searchResults.length) setResultIdx(i => Math.min(searchResults.length - 1, i + 1)); });
 
   useSocket('cec:back', () => {
     if (discoMode) setDiscoMode(false);
@@ -68,7 +59,6 @@ export default function NowPlaying({ focused }) {
     const res  = await fetch(`/api/spotify/search?q=${encodeURIComponent(q)}`);
     const data = await res.json();
     setSearchResults(data);
-    setResultIdx(0);
   }, []);
 
   const playTrack = async (uri) => {
@@ -77,52 +67,11 @@ export default function NowPlaying({ focused }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ uri }),
     });
-    setShowSearch(false); setSearch(''); setSearchResults([]); setResultIdx(0);
+    setShowSearch(false); setSearch(''); setSearchResults([]);
   };
 
   const isPlaying = track?.status === 'playing';
   const progress  = track?.duration > 0 ? (currentPos / track.duration) * 100 : 0;
-
-  const HeaderRow = () => (
-    <div className="np-header tile-header">
-      <p className="title">Now Playing</p>
-      <div className="np-header-icons">
-        {track?.title && (
-          <button className="np-icon-btn" onClick={() => setDiscoMode(true)} title="Disco mode">
-            <Disc3 size={16} />
-          </button>
-        )}
-        <button className="np-icon-btn" onClick={() => setShowSearch(!showSearch)}>
-          {showSearch ? <X size={16} /> : <Search size={16} />}
-        </button>
-      </div>
-    </div>
-  );
-
-  const Controls = () => (
-    <div className="np-controls">
-      <button className="np-btn" onClick={() => command('prev')} aria-label="Previous">
-        <SkipBack size={18} fill="currentColor" />
-      </button>
-      <button className="np-btn np-play" onClick={() => command('toggle')} aria-label="Play/Pause">
-        {isPlaying ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}
-      </button>
-      <button className="np-btn" onClick={() => command('next')} aria-label="Next">
-        <SkipForward size={18} fill="currentColor" />
-      </button>
-    </div>
-  );
-
-  const ProgressBar = () => (
-    <div className="np-progress-row">
-      <span className="np-time">{formatTime(currentPos)}</span>
-      <div className="np-progress-track">
-        <div className="np-progress-fill" style={{ width: `${progress}%` }} />
-        <div className="np-progress-thumb" style={{ left: `${progress}%` }} />
-      </div>
-      <span className="np-time">{formatTime(track?.duration)}</span>
-    </div>
-  );
 
   return (
     <>
@@ -137,7 +86,19 @@ export default function NowPlaying({ focused }) {
 
       {showSearch ? (
         <>
-          <HeaderRow />
+          <div className="np-header tile-header">
+            <p className="title">Now Playing</p>
+            <div className="np-header-icons">
+              {track?.title && (
+                <button className="np-icon-btn" onClick={() => setDiscoMode(true)} title="Disco mode">
+                  <Disc3 size={16} />
+                </button>
+              )}
+              <button className="np-icon-btn" onClick={() => setShowSearch(!showSearch)}>
+                {showSearch ? <X size={16} /> : <Search size={16} />}
+              </button>
+            </div>
+          </div>
           <div className="np-search-container">
             <div style={{ display: 'flex', gap: 8 }}>
               <input className="input" placeholder="Search Spotify..."
@@ -149,21 +110,34 @@ export default function NowPlaying({ focused }) {
             </div>
             <div className="np-search-results">
               {searchResults.map((t, i) => (
-                <div key={t.id} className={`glass np-search-item${i === resultIdx && focused ? ' cec-active' : ''}`} onClick={() => playTrack(t.uri)}>
+                <button key={t.id} className="glass np-search-item" onClick={() => playTrack(t.uri)}
+                        style={{ width: '100%', textAlign: 'left', background: 'transparent', border: '1px solid var(--border)', fontFamily: 'inherit', color: 'inherit' }}>
                   <img src={t.album.images[2]?.url} alt="art" style={{ width: 32, height: 32, borderRadius: 4 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.name}</div>
                     <div style={{ fontSize: 10, color: 'var(--text-dim)' }}>{t.artists[0].name}</div>
                   </div>
                   <Play size={12} fill="currentColor" />
-                </div>
+                </button>
               ))}
             </div>
           </div>
         </>
       ) : track?.title ? (
         <div className="np-compact">
-          <HeaderRow />
+          <div className="np-header tile-header">
+            <p className="title">Now Playing</p>
+            <div className="np-header-icons">
+              {track?.title && (
+                <button className="np-icon-btn" onClick={() => setDiscoMode(true)} title="Disco mode">
+                  <Disc3 size={16} />
+                </button>
+              )}
+              <button className="np-icon-btn" onClick={() => setShowSearch(!showSearch)}>
+                {showSearch ? <X size={16} /> : <Search size={16} />}
+              </button>
+            </div>
+          </div>
           <div className="np-compact-row">
             <div className="np-compact-art">
               {track.art
@@ -175,13 +149,39 @@ export default function NowPlaying({ focused }) {
               <div className="np-title">{track.title}</div>
               <div className="np-artist">{track.artist}</div>
             </div>
-            <Controls />
+            <div className="np-controls">
+              <button className="np-btn" onClick={() => command('prev')} aria-label="Previous">
+                <SkipBack size={18} fill="currentColor" />
+              </button>
+              <button className="np-btn np-play" onClick={() => command('toggle')} aria-label="Play/Pause">
+                {isPlaying ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}
+              </button>
+              <button className="np-btn" onClick={() => command('next')} aria-label="Next">
+                <SkipForward size={18} fill="currentColor" />
+              </button>
+            </div>
           </div>
-          {track.duration > 0 && <ProgressBar />}
+          {track.duration > 0 && (
+            <div className="np-progress-row">
+              <span className="np-time">{formatTime(currentPos)}</span>
+              <div className="np-progress-track">
+                <div className="np-progress-fill" style={{ width: `${progress}%` }} />
+                <div className="np-progress-thumb" style={{ left: `${progress}%` }} />
+              </div>
+              <span className="np-time">{formatTime(track?.duration)}</span>
+            </div>
+          )}
         </div>
       ) : (
         <>
-          <HeaderRow />
+          <div className="np-header tile-header">
+            <p className="title">Now Playing</p>
+            <div className="np-header-icons">
+              <button className="np-icon-btn" onClick={() => setShowSearch(!showSearch)}>
+                {showSearch ? <X size={16} /> : <Search size={16} />}
+              </button>
+            </div>
+          </div>
           <div className="np-idle">
             <div style={{ marginBottom: 12 }}><Music size={48} style={{ color: 'var(--text-muted)' }} /></div>
             <div style={{ fontSize: 13, color: 'var(--text-dim)' }}>Nothing playing</div>
