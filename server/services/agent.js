@@ -202,6 +202,7 @@ Be concise, friendly, and efficient.
 When the user asks to do something, use your tools.
 If you don't have a tool for something, explain that you can't do it yet but maybe in the future.
 Keep your verbal responses short as they will be spoken aloud via TTS.
+IMPORTANT: Always respond in the same language the user spoke in. If they speak Hungarian, reply in Hungarian. If English, reply in English.
 `
     });
     await loader.reload();

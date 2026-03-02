@@ -49,7 +49,7 @@ export function useVoiceRecognition({ onCommand, onListening, onError } = {}) {
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'en-US';
+    recognition.lang = navigator.language || 'en-US';
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
