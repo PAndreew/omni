@@ -11,6 +11,9 @@ server/data/
 *.db
 *.sqlite
 
+# ML model weights (downloaded at runtime, not for git)
+server/models/
+
 # Environment / secrets
 .env
 .env.local

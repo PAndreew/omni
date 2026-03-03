@@ -17,6 +17,11 @@ for i in $(seq 1 30); do
   sleep 1
 done
 
+# Use a tmpfs-backed profile so cache never accumulates across restarts.
+# /tmp is cleared on every reboot; Chromium rebuilds it instantly.
+KIOSK_PROFILE=/tmp/chromium-kiosk
+mkdir -p "$KIOSK_PROFILE"
+
 # Launch Chromium kiosk in background so we can fix the window position
 chromium-browser \
   --ozone-platform=x11 \
@@ -27,8 +32,13 @@ chromium-browser \
   --disable-restore-session-state \
   --disable-component-update \
   --no-first-run \
+  --user-data-dir="$KIOSK_PROFILE" \
   --disk-cache-size=0 \
-  --disable-application-cache \
+  --disable-gpu-shader-disk-cache \
+  --disable-extensions \
+  --disable-sync \
+  --disable-background-networking \
+  --disable-translate \
   --app=http://localhost:3001 &
 
 CHROME_PID=$!

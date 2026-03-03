@@ -7,6 +7,14 @@ import '@xterm/xterm/css/xterm.css';
 
 let sessionCounter = Date.now() % 100000;
 
+const STORAGE_KEY = 'omni:term:sessions';
+function loadPersistedSessions() {
+  try { const s = sessionStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+}
+function persistSessions(sessions) {
+  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(sessions)); } catch {}
+}
+
 function Session({ id, active, onClose, onActivate }) {
   const containerRef = useRef(null);
   const termRef      = useRef(null);  // xterm Terminal instance
@@ -81,8 +89,8 @@ function Session({ id, active, onClose, onActivate }) {
     return () => {
       term.dispose();
       termRef.current = null;
+      // Only detach listeners — do NOT kill the PTY so it survives navigation
       if (socketRef.current) {
-        socketRef.current.emit('term:close', { id });
         socketRef.current.off('term:data',   handlersRef.current.onData);
         socketRef.current.off('term:closed', handlersRef.current.onClosed);
       }
@@ -117,8 +125,17 @@ function Session({ id, active, onClose, onActivate }) {
 
 export default function TerminalWidget({ focused }) {
   const rootRef = useRef(null);
-  const [sessions, setSessions] = useState(() => [{ id: `term-${++sessionCounter}` }]);
-  const [activeId, setActiveId] = useState(() => sessions[0].id);
+  const [sessions, setSessions] = useState(() => {
+    const saved = loadPersistedSessions();
+    return saved?.length ? saved : [{ id: `term-${++sessionCounter}` }];
+  });
+  const [activeId, setActiveId] = useState(() => {
+    const saved = loadPersistedSessions();
+    return saved?.length ? saved[saved.length - 1].id : `term-${sessionCounter}`;
+  });
+
+  // Persist session list whenever it changes
+  useEffect(() => { persistSessions(sessions); }, [sessions]);
 
   const focusTerminalFor = useCallback((sessionId) => {
     const root = rootRef.current;
@@ -161,6 +178,8 @@ export default function TerminalWidget({ focused }) {
   }, [focusTerminalFor]);
 
   const closeSession = useCallback((id) => {
+    // Explicitly kill the PTY on the server
+    getSocket().emit('term:close', { id });
     setSessions(prev => {
       const next = prev.filter(s => s.id !== id);
       if (!next.length) {
@@ -168,7 +187,6 @@ export default function TerminalWidget({ focused }) {
         setActiveId(nid);
         return [{ id: nid }];
       }
-      // If we closed the active one, activate the last remaining
       setActiveId(a => a === id ? next[next.length - 1].id : a);
       return next;
     });

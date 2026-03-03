@@ -43,18 +43,24 @@ export function useTTS() {
 }
 
 // ── Voice recognition ─────────────────────────────────────────────────────────
-export function useVoiceRecognition({ onCommand, onListening, onError } = {}) {
+export function useVoiceRecognition({ onCommand, onDirectSpeech, onListening, onError } = {}) {
   const [listening,        setListening]        = useState(false);
   const [transcript,       setTranscript]       = useState('');
   const [wakeWordDetected, setWakeWordDetected] = useState(false);
   const [chunkCount,       setChunkCount]       = useState(0);
 
-  const onCommandRef  = useRef(onCommand);
-  const onListeningRef = useRef(onListening);
-  const onErrorRef     = useRef(onError);
-  useEffect(() => { onCommandRef.current  = onCommand;  }, [onCommand]);
-  useEffect(() => { onListeningRef.current = onListening; }, [onListening]);
-  useEffect(() => { onErrorRef.current    = onError;    }, [onError]);
+  const onCommandRef      = useRef(onCommand);
+  const onDirectSpeechRef = useRef(onDirectSpeech);
+  const onListeningRef    = useRef(onListening);
+  const onErrorRef        = useRef(onError);
+  useEffect(() => { onCommandRef.current      = onCommand;      }, [onCommand]);
+  useEffect(() => { onDirectSpeechRef.current = onDirectSpeech; }, [onDirectSpeech]);
+  useEffect(() => { onListeningRef.current    = onListening;    }, [onListening]);
+  useEffect(() => { onErrorRef.current        = onError;        }, [onError]);
+
+  // Direct mode: bypass wake word — any speech goes straight to onDirectSpeech
+  const directModeRef = useRef(false);
+  const setDirectMode = useCallback((v) => { directModeRef.current = v; }, []);
 
   const audioCtxRef  = useRef(null);
   const streamRef    = useRef(null);
@@ -86,6 +92,12 @@ export function useVoiceRecognition({ onCommand, onListening, onError } = {}) {
     if (!t) return;
     setTranscript(t);
     console.log('[Voice] Raw transcript:', t);
+
+    // Direct mode: bypass wake word, send transcript straight to onDirectSpeech
+    if (directModeRef.current) {
+      onDirectSpeechRef.current?.(originalText);
+      return;
+    }
 
     // Normalize for wake word check: strip diacritics, punctuation, extra spaces
     const normalized = stripDiacritics(t).replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "").replace(/\s{2,}/g, " ").trim();
@@ -300,5 +312,5 @@ export function useVoiceRecognition({ onCommand, onListening, onError } = {}) {
 
   useEffect(() => () => stop(), [stop]);
 
-  return { listening, transcript, wakeWordDetected, chunkCount, start, stop, supported: true };
+  return { listening, transcript, wakeWordDetected, chunkCount, start, stop, setDirectMode, supported: true };
 }

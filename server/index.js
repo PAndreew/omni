@@ -20,7 +20,8 @@ import { startAudioBridge, getCurrentTrack, sendCommand } from './services/audio
 import { startScheduler } from './services/scheduler.js';
 import { startCalendarSync } from './services/calendar.js';
 import spotifyRouter from './routes/spotify.js';
-import { initAgent, processVoiceCommand } from './services/agent.js';
+import { initAgent, processVoiceCommand, processVoiceCommandSocket } from './services/agent.js';
+import { runClaudeAgent, clearClaudeHistory } from './services/claudeAgent.js';
 import { startWhisper } from './services/whisper.js';
 import db from './db.js';
 
@@ -102,14 +103,45 @@ app.use(express.static(clientDist));
 app.get('/remote', (_req, res) => res.sendFile(path.join(serverPublic, 'remote.html')));
 app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
 
+// ─── Agent: pending voice-confirmation promises ──────────────────────────────
+// socketId → { resolve, reject, timer }
+const pendingAsks = {};
+
+function makeAskFn(socketId) {
+  return (sid, timeoutMs) =>
+    new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        delete pendingAsks[socketId];
+        reject(new Error('timeout'));
+      }, timeoutMs);
+      pendingAsks[socketId] = { resolve, reject, timer };
+    });
+}
+
 // ─── PTY session store ───────────────────────────────────────────────────────
-const ptySessions = {};   // sessionId → pty process
+// Each entry: { proc, socketId, dataDisposable, cleanupTimer }
+const ptySessions = {};
+const PTY_GRACE_MS = 5 * 60 * 1000; // 5 minutes before killing a detached session
+
+function attachPtySocket(id, socket) {
+  const s = ptySessions[id];
+  if (!s) return;
+  if (s.dataDisposable) { try { s.dataDisposable.dispose(); } catch {} }
+  if (s.cleanupTimer)   { clearTimeout(s.cleanupTimer); s.cleanupTimer = null; }
+  s.socketId       = socket.id;
+  s.dataDisposable = s.proc.onData(data => socket.emit('term:data', { id, data }));
+}
 
 function spawnPty(id, cols, rows, socket) {
-  if (ptySessions[id]) return;
+  // Session exists (possibly detached) — just reattach
+  if (ptySessions[id]) {
+    attachPtySocket(id, socket);
+    socket.emit('term:data', { id, data: '\r\n\x1b[2m[session restored]\x1b[0m\r\n' });
+    return;
+  }
+
   const shell = process.env.SHELL || '/bin/bash';
   console.log(`[PTY] Spawning ${shell} for session ${id} (${cols}x${rows})`);
-  
   try {
     const proc = pty.spawn(shell, [], {
       name: 'xterm-256color',
@@ -118,16 +150,15 @@ function spawnPty(id, cols, rows, socket) {
       cwd: process.env.HOME || '/home/pi',
       env: { ...process.env, TERM: 'xterm-256color' },
     });
-    proc._socketId = socket.id;   // track owner for cleanup on disconnect
-    ptySessions[id] = proc;
-
-    proc.onData(data => socket.emit('term:data', { id, data }));
+    const session = { proc, socketId: socket.id, dataDisposable: null, cleanupTimer: null };
+    ptySessions[id] = session;
+    session.dataDisposable = proc.onData(data => socket.emit('term:data', { id, data }));
     proc.onExit(({ exitCode, signal }) => {
-      console.log(`[PTY] Session ${id} exited with code ${exitCode}, signal ${signal}`);
+      console.log(`[PTY] Session ${id} exited (code=${exitCode} sig=${signal})`);
+      const s = ptySessions[id];
+      if (s?.cleanupTimer) clearTimeout(s.cleanupTimer);
       delete ptySessions[id];
-      if (socket.connected) {
-        socket.emit('term:closed', { id });
-      }
+      if (socket.connected) socket.emit('term:closed', { id });
     });
   } catch (err) {
     console.error(`[PTY] Failed to spawn PTY for ${id}:`, err);
@@ -169,23 +200,56 @@ io.on('connection', (socket) => {
     }
   });
 
+  // ── Agent: voice-driven AI commands ─────────────────────────────────────
+  socket.on('agent:command', async ({ text, agent }) => {
+    console.log(`[WS] agent:command agent=${agent} text="${text}"`);
+    const emit = (event, data) => socket.emit(event, data);
+    if (agent === 'claude') {
+      runClaudeAgent({ text, socketId: socket.id, emit, onAsk: makeAskFn(socket.id) });
+    } else {
+      // Pi agent (existing session-based agent)
+      processVoiceCommandSocket(text, emit);
+    }
+  });
+
+  socket.on('agent:respond', ({ text }) => {
+    const p = pendingAsks[socket.id];
+    if (p) { clearTimeout(p.timer); delete pendingAsks[socket.id]; p.resolve(text); }
+  });
+
+  socket.on('agent:cancel', () => {
+    const p = pendingAsks[socket.id];
+    if (p) { clearTimeout(p.timer); delete pendingAsks[socket.id]; p.reject(new Error('cancelled')); }
+  });
+
   // ── Terminal (PTY) sessions ──────────────────────────────────────────────
   socket.on('term:open', ({ id, cols, rows }) => {
     console.log(`[WS] term:open session=${id} cols=${cols} rows=${rows}`);
     spawnPty(id, cols, rows, socket);
   });
-  socket.on('term:input',  ({ id, data }) => { if (ptySessions[id]) ptySessions[id].write(data); });
-  socket.on('term:resize', ({ id, cols, rows }) => { if (ptySessions[id]) ptySessions[id].resize(cols, rows); });
+  socket.on('term:input',  ({ id, data }) => { if (ptySessions[id]) ptySessions[id].proc.write(data); });
+  socket.on('term:resize', ({ id, cols, rows }) => { if (ptySessions[id]) ptySessions[id].proc.resize(cols, rows); });
   socket.on('term:close',  ({ id }) => {
-    if (ptySessions[id]) { try { ptySessions[id].kill(); } catch {} delete ptySessions[id]; }
+    const s = ptySessions[id];
+    if (s) { if (s.cleanupTimer) clearTimeout(s.cleanupTimer); try { s.proc.kill(); } catch {} delete ptySessions[id]; }
   });
 
   socket.on('disconnect', () => {
     console.log(`[WS] Client disconnected: ${socket.id}`);
-    for (const [id, proc] of Object.entries(ptySessions)) {
-      if (proc._socketId === socket.id) {
-        try { proc.kill(); } catch {}
-        delete ptySessions[id];
+    // Cancel any pending agent voice confirmation
+    const p = pendingAsks[socket.id];
+    if (p) { clearTimeout(p.timer); delete pendingAsks[socket.id]; p.reject(new Error('disconnected')); }
+    clearClaudeHistory(socket.id);
+
+    for (const [id, s] of Object.entries(ptySessions)) {
+      if (s.socketId === socket.id) {
+        // Detach data pipe but keep PTY alive for grace period
+        if (s.dataDisposable) { try { s.dataDisposable.dispose(); } catch {} s.dataDisposable = null; }
+        s.cleanupTimer = setTimeout(() => {
+          console.log(`[PTY] Grace period expired, killing session ${id}`);
+          try { s.proc.kill(); } catch {}
+          delete ptySessions[id];
+        }, PTY_GRACE_MS);
       }
     }
   });

@@ -230,7 +230,7 @@ IMPORTANT: Always respond in the same language the user spoke in. If they speak 
 }
 
 /**
- * Handle a voice command by sending it to the agent.
+ * Handle a voice command (HTTP path — returns string).
  */
 export async function processVoiceCommand(text) {
   if (!session) return "I'm sorry, my brain isn't fully loaded yet.";
@@ -249,6 +249,45 @@ export async function processVoiceCommand(text) {
   } catch (err) {
     console.error('[Agent] Error processing command:', err);
     return "I encountered an error while processing your request.";
+  } finally {
+    unsubscribe();
+  }
+}
+
+/**
+ * Handle a voice command via socket — streams status updates back to the client.
+ * @param {string}   text  - User's voice command
+ * @param {Function} emit  - (event, data) => void
+ */
+export async function processVoiceCommandSocket(text, emit) {
+  if (!session) {
+    emit('agent:done', { text: "I'm sorry, my brain isn't fully loaded yet." });
+    return;
+  }
+
+  emit('agent:status', { text: 'Thinking…' });
+
+  let reply = '';
+  let toolName = '';
+  const unsubscribe = session.subscribe((event) => {
+    if (event.type === 'message_update') {
+      const ev = event.assistantMessageEvent;
+      if (ev.type === 'text_delta') {
+        reply += ev.delta;
+      } else if (ev.type === 'tool_call_start') {
+        toolName = ev.toolCallEvent?.name || 'tool';
+        emit('agent:status', { text: `Using ${toolName}…` });
+      }
+    }
+  });
+
+  try {
+    await session.prompt(text);
+    await session.agent.waitForIdle();
+    emit('agent:done', { text: reply || "Done." });
+  } catch (err) {
+    console.error('[Agent] Error processing command:', err);
+    emit('agent:error', { text: "I encountered an error while processing your request." });
   } finally {
     unsubscribe();
   }
