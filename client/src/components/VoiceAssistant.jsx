@@ -1,10 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Mic, MicOff, Volume2, Loader, Bot, Cpu } from 'lucide-react';
+import { MicOff } from 'lucide-react';
 import { useVoiceRecognition, useTTS } from '../hooks/useVoice.js';
 import { useSocket, getSocket } from '../hooks/useSocket.js';
+import ClaudeIcon from './icons/ClaudeIcon.jsx';
+import PiIcon from './icons/PiIcon.jsx';
 
-const LANGS = ['hu', 'en', 'auto'];
-const LANG_LABEL = { hu: 'HU', en: 'EN', auto: 'AUTO' };
+const LANGS = ['hu', 'en'];
 
 // Persist mode across navigations
 function loadMode() {
@@ -39,18 +40,20 @@ export default function VoiceAssistant({ focused }) {
 
   // ── Load saved lang on mount ───────────────────────────────────────────────
   useEffect(() => {
-    fetch('/api/settings').then(r => r.json()).then(s => setLang(s.voice_language || 'hu')).catch(() => {});
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(s => setLang(LANGS.includes(s.voice_language) ? s.voice_language : 'hu'))
+      .catch(() => {});
   }, []);
 
-  const cycleLang = useCallback(() => {
-    const next = LANGS[(LANGS.indexOf(lang) + 1) % LANGS.length];
+  const updateLang = useCallback((next) => {
     setLang(next);
     fetch('/api/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ voice_language: next }),
     }).catch(() => {});
-  }, [lang]);
+  }, []);
 
   // ── Countdown helper ───────────────────────────────────────────────────────
   const startCountdown = useCallback((seconds) => {
@@ -205,16 +208,9 @@ export default function VoiceAssistant({ focused }) {
   // Legacy HTTP voice reply from socket
   useSocket('voice:reply', ({ text }) => { speak(text); });
 
-  // ── Mode icons ─────────────────────────────────────────────────────────────
-  const MicIcon = status === 'processing' || status === 'agent_thinking' ? Loader
-                : status === 'speaking'   ? Volume2
-                : active                  ? Mic
-                :                          MicOff;
-
-  const micColor = status === 'speaking' ? 'var(--green)'
-                 : mode === 'claude'      ? '#a78bfa'
-                 : mode === 'pi'          ? 'var(--silver)'
-                 :                         'var(--silver)';
+  const buttonIcon = mode === 'claude' ? 'claude'
+                   : mode === 'pi'     ? 'pi'
+                   :                    'off';
 
   if (!supported) return (
     <div className={`tile ${focused ? 'focused' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -230,23 +226,31 @@ export default function VoiceAssistant({ focused }) {
         {/* Mic button */}
         <button
           className={`voice-btn ${status !== 'idle' && active ? 'active' : ''} ${mode === 'claude' ? 'mode-claude' : mode === 'pi' ? 'mode-pi' : ''}`}
-          onClick={() => mode === 'off' ? switchMode('pi') : switchMode(mode)}
-          aria-label="Toggle voice"
-          title={active ? 'Click to deactivate' : 'Click to activate'}
+          onClick={() => {
+            if (mode === 'off') return switchMode('pi');
+            if (mode === 'pi') return switchMode('claude');
+            return switchMode('off');
+          }}
+          aria-label="Toggle voice mode"
+          title={mode === 'off' ? 'Click to activate Pi' : mode === 'pi' ? 'Click to activate Claude' : 'Click to turn off'}
         >
           {status === 'wake' && <div className="voice-ripple" />}
-          <MicIcon
-            size={22} strokeWidth={1.5}
-            style={{ color: micColor }}
-            className={status === 'agent_thinking' || status === 'processing' ? 'spin' : ''}
-          />
+          {buttonIcon === 'off' && (
+            <MicOff size={22} strokeWidth={1.5} style={{ color: 'var(--silver)' }} />
+          )}
+          {buttonIcon === 'pi' && (
+            <PiIcon size={22} />
+          )}
+          {buttonIcon === 'claude' && (
+            <ClaudeIcon size={22} />
+          )}
         </button>
 
         {/* Status text area */}
         <div className="voice-text">
           <div className="voice-status">
             {status === 'idle' && mode === 'off' &&
-              <span style={{ color: 'var(--text-muted)' }}>Select PI or Claude to activate</span>}
+              <span style={{ color: 'var(--text-muted)' }}>Tap mic to activate</span>}
             {status === 'idle' && mode !== 'off' &&
               <span style={{ color: 'var(--text-muted)' }}>Say "Hey Omni" to activate</span>}
             {status === 'listening' &&
@@ -281,27 +285,20 @@ export default function VoiceAssistant({ focused }) {
           )}
         </div>
 
-        {/* Right controls: mode pills + lang */}
+        {/* Right controls: language dropdown */}
         <div className="voice-controls">
-          <div className="mode-pills">
-            <button
-              className={`mode-pill ${mode === 'pi' ? 'active-pi' : ''}`}
-              onClick={() => switchMode('pi')}
-              title="Pi agent — chores, music, home automation"
+          <label className="lang-select" title="Language">
+            <span className="lang-label">Lang</span>
+            <select
+              value={lang}
+              onChange={(e) => updateLang(e.target.value)}
+              aria-label="Select language"
             >
-              <Cpu size={10} strokeWidth={2} style={{ marginRight: 3 }} />PI
-            </button>
-            <button
-              className={`mode-pill ${mode === 'claude' ? 'active-claude' : ''}`}
-              onClick={() => switchMode('claude')}
-              title="Claude — coding, scripts, general AI"
-            >
-              <Bot size={10} strokeWidth={2} style={{ marginRight: 3 }} />AI
-            </button>
-          </div>
-          <button onClick={cycleLang} title="Cycle language" className="lang-pill">
-            {LANG_LABEL[lang]}
-          </button>
+              {LANGS.map((code) => (
+                <option key={code} value={code}>{code.toUpperCase()}</option>
+              ))}
+            </select>
+          </label>
         </div>
 
       </div>
@@ -309,7 +306,7 @@ export default function VoiceAssistant({ focused }) {
       <div className="voice-hint">
         PI: <em>weather</em> · <em>chores</em> · <em>play/pause</em> · <em>good night</em>
         {' '}·{' '}
-        AI: <em>create a script that…</em> · <em>what's in ~/Documents?</em>
+        Claude: <em>create a script that…</em> · <em>what's in ~/Documents?</em>
       </div>
 
       <style>{`
@@ -338,34 +335,22 @@ export default function VoiceAssistant({ focused }) {
         .voice-btn.mode-pi.active  { border-color: var(--silver); }
 
         /* Right side controls */
-        .voice-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
+        .voice-controls { display: flex; align-items: center; justify-content: flex-end; flex-shrink: 0; }
 
-        /* Mode pills */
-        .mode-pills { display: flex; gap: 4px; }
-        .mode-pill {
-          display: flex; align-items: center;
-          font-size: 10px; font-family: monospace; font-weight: 700; letter-spacing: 0.06em;
-          padding: 4px 8px; border-radius: 4px; cursor: pointer;
-          background: var(--surface-2); border: 1px solid var(--border);
-          color: var(--text-dim); transition: all 0.15s;
+        /* Lang dropdown */
+        .lang-select { display: inline-flex; align-items: center; gap: 6px;
+                       background: var(--surface-2); border: 1px solid var(--border);
+                       padding: 4px 6px; border-radius: 6px; }
+        .lang-label { font-size: 9px; font-family: monospace; font-weight: 700;
+                      letter-spacing: 0.08em; color: var(--text-dim); }
+        .lang-select select {
+          appearance: none; background: transparent; border: none; outline: none;
+          font-size: 10px; font-family: monospace; font-weight: 700; letter-spacing: 0.08em;
+          color: var(--text); cursor: pointer; padding-right: 14px;
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+          background-repeat: no-repeat; background-position: right 0 center;
         }
-        .mode-pill:hover { color: var(--silver); border-color: var(--border); }
-        .mode-pill.active-pi    { color: var(--silver-light); border-color: var(--silver);
-                                  background: rgba(176,176,176,0.08); }
-        .mode-pill.active-claude { color: #a78bfa; border-color: #7c3aed;
-                                   background: rgba(124,58,237,0.12); }
-
-        /* Lang pill */
-        .lang-pill {
-          font-size: 9px; font-family: monospace; font-weight: 700; letter-spacing: 0.08em;
-          padding: 2px 7px; border-radius: 4px; cursor: pointer;
-          background: var(--surface-2); border: 1px solid var(--border);
-          color: var(--text-dim);
-        }
-        .lang-pill:hover { color: var(--silver); }
-
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spin { animation: spin 1s linear infinite; }
+        .lang-select select option { color: #111; }
 
         /* Voice ripple */
         .voice-ripple {
