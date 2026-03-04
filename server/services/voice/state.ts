@@ -61,11 +61,12 @@ export function processEvent(
 
     case 'SPEECH_STARTED':
       if (session.state === 'RESPONDING') {
-        // Barge-in: interrupt TTS+LLM and go back to listening
-        nextState = 'LISTENING';
+        // Barge-in: interrupt TTS+LLM, stay AWAKE so next transcript is treated as a command
+        nextState = 'AWAKE';
         actions.push({ type: 'ABORT_TTS' });
         actions.push({ type: 'ABORT_LLM' });
         actions.push({ type: 'EMIT_INTERRUPT' });
+        actions.push({ type: 'START_WAKE_TIMEOUT' });
       }
       break;
 
@@ -84,7 +85,9 @@ export function processEvent(
 
     case 'TTS_DONE':
       if (session.state === 'RESPONDING') {
-        nextState = 'LISTENING';
+        // Stay AWAKE for follow-up turns; a new wake timeout starts the silence countdown
+        nextState = 'AWAKE';
+        actions.push({ type: 'START_WAKE_TIMEOUT' });
       }
       break;
 
