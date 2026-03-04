@@ -43,8 +43,10 @@ export async function initAgent(io) {
         authHeader: true,
         api: 'openai-completions',
         models: [
-          { id: 'moonshotai/kimi-k2.5',        name: 'Kimi K2.5',          api: 'openai-completions', contextWindow: 131072, maxTokens: 16384, reasoning: false, input: ['text'] },
-          { id: 'anthropic/claude-sonnet-4-5',  name: 'Claude Sonnet 4.5',  api: 'openai-completions', contextWindow: 200000, maxTokens: 16384, reasoning: false, input: ['text'] },
+          // Non-reasoning — content comes back normally
+          { id: 'moonshotai/kimi-k2',          name: 'Kimi K2',            api: 'openai-completions', contextWindow: 131072, maxTokens: 16384, reasoning: false, input: ['text'] },
+          // Reasoning model — pi-ai openai-completions provider handles anthropic/ via OpenRouter specially
+          { id: 'anthropic/claude-sonnet-4-5', name: 'Claude Sonnet 4.5',  api: 'openai-completions', contextWindow: 200000, maxTokens: 16384, reasoning: true,  input: ['text'], compat: { thinkingBudget: 8000 } },
         ],
       });
       console.log('[Agent] OpenRouter provider registered.');
@@ -239,7 +241,7 @@ IMPORTANT: Always respond in the same language the user spoke in. If they speak 
     });
     await loader.reload();
 
-    const kimiModel   = modelRegistry.find('openrouter', 'moonshotai/kimi-k2.5');
+    const kimiModel   = modelRegistry.find('openrouter', 'moonshotai/kimi-k2');
     const sonnetModel = modelRegistry.find('openrouter', 'anthropic/claude-sonnet-4-5');
 
     // General session (kimi-k2.5)
@@ -268,7 +270,7 @@ IMPORTANT: Always respond in the same language the user spoke in. If they speak 
       complexSession = complexResult.session;
     }
 
-    console.log('[Agent] Omni Agent initialized (kimi-k2.5' + (complexSession ? ' + claude-sonnet' : '') + ').');
+    console.log('[Agent] Omni Agent initialized (kimi-k2' + (complexSession ? ' + claude-sonnet' : '') + ').');
   } catch (err) {
     console.error('[Agent] Initialization failed:', err);
   }
@@ -323,12 +325,14 @@ export async function processVoiceCommandSocket(text, emit, complex = false, onA
   const unsubscribe = activeSession.subscribe((event) => {
     if (event.type === 'message_update') {
       const ev = event.assistantMessageEvent;
+      // Only accumulate actual text — skip thinking/reasoning tokens
       if (ev.type === 'text_delta') {
         reply += ev.delta;
       } else if (ev.type === 'tool_call_start') {
         toolName = ev.toolCallEvent?.name || 'tool';
         emit('agent:status', { text: `Using ${toolName}…` });
       }
+      // thinking_delta / reasoning_delta are intentionally ignored
     }
   });
 
