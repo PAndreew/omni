@@ -202,55 +202,26 @@ export default function App() {
     else if (widgetMode) exitWidget();
   });
 
-  // Helper: get active terminal session id from DOM
-  const getActiveTermId = useCallback(() => {
-    return document.querySelector('[data-active-term-id]')?.dataset.activeTermId || null;
-  }, []);
-
-  // Remote text relay — route to PTY when terminal is active widget, else to focused input
+  // Remote text relay — route to focused input only (terminal uses its own on-screen keybar)
   useSocket('remote:type', (text) => {
-    // Terminal widget is active → always send to PTY
-    if (widgetMode && TILES[focusIdx] === 'terminal') {
-      const id = getActiveTermId();
-      if (id) { getSocket().emit('term:input', { id, data: text }); return; }
-    }
     const el = document.activeElement;
-    if (!el) return;
-    if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) {
-      getSocket().emit('term:input', { id: el.dataset.termSessionId, data: text }); return;
-    }
-    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
+    if (!el || el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
     const proto  = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
     setter.call(el, el.value + text);
     el.dispatchEvent(new Event('input', { bubbles: true }));
   });
   useSocket('remote:backspace', () => {
-    if (widgetMode && TILES[focusIdx] === 'terminal') {
-      const id = getActiveTermId();
-      if (id) { getSocket().emit('term:input', { id, data: '\x7f' }); return; }
-    }
     const el = document.activeElement;
-    if (!el) return;
-    if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) {
-      getSocket().emit('term:input', { id: el.dataset.termSessionId, data: '\x7f' }); return;
-    }
-    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
+    if (!el || el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
     const proto  = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
     setter.call(el, el.value.slice(0, -1));
     el.dispatchEvent(new Event('input', { bubbles: true }));
   });
   useSocket('remote:enter', () => {
-    if (widgetMode && TILES[focusIdx] === 'terminal') {
-      const id = getActiveTermId();
-      if (id) { getSocket().emit('term:input', { id, data: '\r' }); return; }
-    }
     const el = document.activeElement;
     if (!el) return;
-    if (el.tagName === 'TEXTAREA' && el.dataset?.termSessionId) {
-      getSocket().emit('term:input', { id: el.dataset.termSessionId, data: '\r' }); return;
-    }
     el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   });
 

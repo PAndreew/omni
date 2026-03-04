@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Terminal as TermIcon, Plus, X } from 'lucide-react';
+import { Terminal as TermIcon, Plus, X, Maximize2, Minimize2 } from 'lucide-react';
 import { getSocket } from '../hooks/useSocket.js';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -164,6 +164,24 @@ export default function TerminalWidget({ focused }) {
   });
   // Track which sessions are waiting for input (show dot on tab)
   const [activityIds, setActivityIds] = useState(new Set());
+  const [fullscreen, setFullscreen] = useState(false);
+
+  // Key sequences sent via the on-screen navbar
+  const KEY_BUTTONS = [
+    { label: 'Esc',  seq: '\x1b'   },
+    { label: 'Tab',  seq: '\t'     },
+    { label: '/',    seq: '/'      },
+    { label: '↑',    seq: '\x1b[A' },
+    { label: '↓',    seq: '\x1b[B' },
+    { label: '←',    seq: '\x1b[D' },
+    { label: '→',    seq: '\x1b[C' },
+  ];
+
+  const sendKey = useCallback((seq) => {
+    getSocket().emit('term:input', { id: activeId, data: seq });
+    focusActiveTerminal();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
 
   // Listen for server-side needs-input / activity events
   useEffect(() => {
@@ -257,7 +275,11 @@ export default function TerminalWidget({ focused }) {
   }, []);
 
   return (
-    <div ref={rootRef} className={`tile term-tile ${focused ? 'focused' : ''}`} data-active-term-id={activeId}>
+    <div
+      ref={rootRef}
+      className={`tile term-tile ${focused ? 'focused' : ''} ${fullscreen ? 'term-fullscreen' : ''}`}
+      data-active-term-id={activeId}
+    >
       {/* Tab bar */}
       <div className="term-tabbar">
         <TermIcon size={13} strokeWidth={1.5} style={{ color: 'var(--text-dim)', flexShrink: 0 }} />
@@ -283,6 +305,9 @@ export default function TerminalWidget({ focused }) {
         <button className="term-new-btn" onClick={newSession} title="New terminal session">
           <Plus size={13} strokeWidth={2} />
         </button>
+        <button className="term-new-btn" onClick={() => setFullscreen(f => !f)} title={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
+          {fullscreen ? <Minimize2 size={13} strokeWidth={2} /> : <Maximize2 size={13} strokeWidth={2} />}
+        </button>
       </div>
 
       {/* Terminal panes */}
@@ -297,6 +322,23 @@ export default function TerminalWidget({ focused }) {
           />
         ))}
       </div>
+
+      {/* On-screen key navbar — only shown in fullscreen */}
+      {fullscreen && (
+        <div className="term-keybar">
+          {KEY_BUTTONS.map(({ label, seq }) => (
+            <button
+              key={label}
+              className="term-key-btn"
+              onPointerDown={e => { e.preventDefault(); sendKey(seq); }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
       <style>{`
         .term-tile {
@@ -344,6 +386,33 @@ export default function TerminalWidget({ focused }) {
           padding: 4px 6px 4px 4px;
           background: #000;
         }
+
+        /* Fullscreen mode — escape bento grid, cover entire screen */
+        .term-fullscreen {
+          position: fixed !important;
+          inset: 0 !important;
+          z-index: 9000 !important;
+          border-radius: 0 !important;
+          width: 100dvw !important;
+          height: 100dvh !important;
+        }
+
+        /* On-screen key navbar */
+        .term-keybar {
+          display: flex; gap: 6px; padding: 8px 10px;
+          background: var(--surface); border-top: 1px solid var(--border);
+          flex-shrink: 0; overflow-x: auto;
+        }
+        .term-keybar::-webkit-scrollbar { height: 0; }
+        .term-key-btn {
+          padding: 6px 14px; font-size: 12px; font-family: inherit;
+          background: var(--surface-2); border: 1px solid var(--border);
+          color: var(--silver); cursor: pointer; border-radius: 4px;
+          white-space: nowrap; flex-shrink: 0;
+          transition: background 0.12s, color 0.12s;
+          -webkit-user-select: none; user-select: none;
+        }
+        .term-key-btn:active { background: var(--border); color: var(--silver-light); }
 
         /* xterm overrides */
         .term-body .xterm { height: 100% !important; overflow: visible !important; }
