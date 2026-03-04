@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { MicOff } from 'lucide-react';
+import { MicOff, Mic } from 'lucide-react';
 import { useVoiceRecognition, useTTS } from '../hooks/useVoice.js';
+import { useVoicePipeline } from '../hooks/useVoicePipeline.js';
 import { useSocket, getSocket } from '../hooks/useSocket.js';
 import ClaudeIcon from './icons/ClaudeIcon.jsx';
 import PiIcon from './icons/PiIcon.jsx';
@@ -15,27 +16,42 @@ function saveMode(m) {
   try { localStorage.setItem('omni:voice:mode', m); } catch {}
 }
 
+// ── Omni mode icon (waveform-style mic) ──────────────────────────────────────
+function OmniIcon({ size = 22 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+      <path d="M12 2a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z" />
+      <path d="M19 10a7 7 0 0 1-14 0" />
+      <line x1="12" y1="19" x2="12" y2="22" />
+      <line x1="8"  y1="22" x2="16" y2="22" />
+    </svg>
+  );
+}
+
 export default function VoiceAssistant({ focused }) {
   // ── Core state ────────────────────────────────────────────────────────────
-  const [mode,   setModeState] = useState(loadMode);   // 'off' | 'pi' | 'claude'
+  const [mode,   setModeState] = useState(loadMode);   // 'off' | 'pi' | 'claude' | 'omni'
   const [status, setStatus]    = useState('idle');
   // idle | listening | wake | processing | agent_thinking | awaiting_confirm | speaking
 
   const [transcript,    setTranscript]    = useState('');
-  const [agentMessage,  setAgentMessage]  = useState('');  // last agent:status or question
+  const [agentMessage,  setAgentMessage]  = useState('');
   const [finalReply,    setFinalReply]    = useState('');
   const [error,         setError]         = useState('');
   const [lang,          setLang]          = useState('hu');
   const [countdown,     setCountdown]     = useState(0);
-  const [active,        setActive]        = useState(false);  // mic on/off
+  const [active,        setActive]        = useState(false);
 
   const countdownRef      = useRef(null);
   const confirmTimeout    = useRef(null);
-  const setDirectModeRef  = useRef(() => {});  // populated after hook call
+  const setDirectModeRef  = useRef(() => {});
 
   const { speak, cancel: cancelTTS } = useTTS();
 
-  // ── Mode setter (also saves to localStorage) ──────────────────────────────
+  // ── Omni pipeline (mode === 'omni') ───────────────────────────────────────
+  const pipeline = useVoicePipeline();
+
+  // ── Mode setter ───────────────────────────────────────────────────────────
   const setMode = useCallback((m) => { setModeState(m); saveMode(m); }, []);
 
   // ── Load saved lang on mount ───────────────────────────────────────────────
@@ -72,10 +88,9 @@ export default function VoiceAssistant({ focused }) {
     setCountdown(0);
   }, []);
 
-  // ── Voice command handler (wake word path) ────────────────────────────────
+  // ── Voice command handler (pi/claude wake word path) ──────────────────────
   const handleCommand = useCallback((text) => {
     if (!text) return;
-    console.log('[VA] handleCommand:', text, 'mode:', mode);
     setTranscript(text);
     setStatus('agent_thinking');
     setAgentMessage('');
@@ -83,10 +98,8 @@ export default function VoiceAssistant({ focused }) {
     getSocket().emit('agent:command', { text, agent: mode });
   }, [mode]);
 
-  // ── Direct speech handler (confirm-response path) ─────────────────────────
   const handleDirectSpeech = useCallback((text) => {
     if (!text || status !== 'awaiting_confirm') return;
-    console.log('[VA] directSpeech (confirm):', text);
     clearTimeout(confirmTimeout.current);
     stopCountdown();
     setDirectModeRef.current(false);
@@ -95,7 +108,7 @@ export default function VoiceAssistant({ focused }) {
     getSocket().emit('agent:respond', { text });
   }, [status, stopCountdown]);
 
-  // ── Voice recognition hook ────────────────────────────────────────────────
+  // ── Voice recognition hook (pi/claude modes) ──────────────────────────────
   const {
     listening, wakeWordDetected, chunkCount, supported,
     start, stop, setDirectMode,
@@ -106,7 +119,6 @@ export default function VoiceAssistant({ focused }) {
     onError: (msg) => { setError(msg); setActive(false); setStatus('idle'); },
   });
 
-  // Populate the ref so handleDirectSpeech can call setDirectMode without circular deps
   useEffect(() => { setDirectModeRef.current = setDirectMode; }, [setDirectMode]);
 
   useEffect(() => {
@@ -116,7 +128,7 @@ export default function VoiceAssistant({ focused }) {
     }
   }, [wakeWordDetected, listening]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Mic control ───────────────────────────────────────────────────────────
+  // ── Mic control (pi/claude) ────────────────────────────────────────────────
   const stopMic = useCallback(() => {
     stop();
     setActive(false);
@@ -129,20 +141,49 @@ export default function VoiceAssistant({ focused }) {
   }, [stop, cancelTTS, stopCountdown]);
 
   // ── Mode switch ───────────────────────────────────────────────────────────
+  // Cycle: off → pi → claude → omni → off
   const switchMode = useCallback(async (newMode) => {
-    // Cancel any pending confirm
     clearTimeout(confirmTimeout.current);
     stopCountdown();
     setDirectModeRef.current(false);
 
+    // Stop omni pipeline if leaving omni
+    if (mode === 'omni' && newMode !== 'omni') {
+      pipeline.stop();
+    }
+
     if (newMode === mode && active) {
-      // Clicking active mode → turn off
       stopMic();
       setMode('off');
       return;
     }
-    if (newMode === 'off') { stopMic(); setMode('off'); return; }
+    if (newMode === mode && mode === 'omni' && pipeline.active) {
+      pipeline.stop();
+      setMode('off');
+      return;
+    }
+    if (newMode === 'off') {
+      stopMic();
+      if (mode === 'omni') pipeline.stop();
+      setMode('off');
+      return;
+    }
+
+    // Start omni mode
+    if (newMode === 'omni') {
+      if (active && mode !== 'off') { stop(); setActive(false); }
+      setMode('omni');
+      setStatus('idle');
+      setAgentMessage('');
+      setFinalReply('');
+      setError('');
+      await pipeline.start();
+      return;
+    }
+
+    // Start pi/claude mode
     if (active && mode !== 'off') { stop(); setActive(false); }
+    if (mode === 'omni') pipeline.stop();
     setMode(newMode);
     setStatus('idle');
     setAgentMessage('');
@@ -151,7 +192,15 @@ export default function VoiceAssistant({ focused }) {
     getSocket().emit('agent:cancel');
     const ok = await start();
     if (ok) setActive(true);
-  }, [mode, active, stopMic, stop, start, setMode, stopCountdown]);
+  }, [mode, active, pipeline, stopMic, stop, start, setMode, stopCountdown]);
+
+  // ── Click handler: cycle through modes ────────────────────────────────────
+  const handleClick = useCallback(() => {
+    if (mode === 'off')   return switchMode('pi');
+    if (mode === 'pi')    return switchMode('claude');
+    if (mode === 'claude') return switchMode('omni');
+    return switchMode('off');
+  }, [mode, switchMode]);
 
   // ── Auto-start on kiosk (non-touch), restore saved mode ───────────────────
   useEffect(() => {
@@ -161,7 +210,7 @@ export default function VoiceAssistant({ focused }) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Socket: agent events ──────────────────────────────────────────────────
+  // ── Socket: agent events (pi/claude modes) ────────────────────────────────
   useSocket('agent:status', ({ text }) => {
     setStatus('agent_thinking');
     setAgentMessage(text);
@@ -172,11 +221,9 @@ export default function VoiceAssistant({ focused }) {
     setAgentMessage(text);
     cancelTTS();
     speak(text);
-
     const secs = Math.round((timeout || 25000) / 1000);
     startCountdown(secs);
     setDirectModeRef.current(true);
-
     clearTimeout(confirmTimeout.current);
     confirmTimeout.current = setTimeout(() => {
       setDirectModeRef.current(false);
@@ -205,14 +252,23 @@ export default function VoiceAssistant({ focused }) {
     speak(text);
   });
 
-  // Legacy HTTP voice reply from socket
   useSocket('voice:reply', ({ text }) => { speak(text); });
+
+  // ── Derived values ─────────────────────────────────────────────────────────
+  const isOmni = mode === 'omni';
+  const omniState = pipeline.state; // 'idle' | 'listening' | 'thinking' | 'responding'
 
   const buttonIcon = mode === 'claude' ? 'claude'
                    : mode === 'pi'     ? 'pi'
+                   : mode === 'omni'   ? 'omni'
                    :                    'off';
 
-  if (!supported) return (
+  const titleAttr = mode === 'off'    ? 'Click to activate Pi'
+                  : mode === 'pi'     ? 'Click to activate Claude'
+                  : mode === 'claude' ? 'Click to activate Omni (Deepgram + AI)'
+                  :                    'Click to turn off';
+
+  if (!supported && mode !== 'omni') return (
     <div className={`tile ${focused ? 'focused' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
       <MicOff size={20} strokeWidth={1.5} style={{ color: 'var(--text-dim)' }} />
       <span style={{ fontSize: 13, color: 'var(--text-dim)' }}>Voice recognition not supported in this browser.</span>
@@ -225,88 +281,120 @@ export default function VoiceAssistant({ focused }) {
 
         {/* Mic button */}
         <button
-          className={`voice-btn ${status !== 'idle' && active ? 'active' : ''} ${mode === 'claude' ? 'mode-claude' : mode === 'pi' ? 'mode-pi' : ''}`}
-          onClick={() => {
-            if (mode === 'off') return switchMode('pi');
-            if (mode === 'pi') return switchMode('claude');
-            return switchMode('off');
-          }}
+          className={`voice-btn ${(isOmni ? pipeline.active : (status !== 'idle' && active)) ? 'active' : ''} ${
+            mode === 'claude' ? 'mode-claude' : mode === 'pi' ? 'mode-pi' : mode === 'omni' ? 'mode-omni' : ''
+          }`}
+          onClick={handleClick}
           aria-label="Toggle voice mode"
-          title={mode === 'off' ? 'Click to activate Pi' : mode === 'pi' ? 'Click to activate Claude' : 'Click to turn off'}
+          title={titleAttr}
         >
           {status === 'wake' && <div className="voice-ripple" />}
+          {isOmni && omniState !== 'idle' && <div className={`voice-ripple omni-ripple${omniState === 'awake' ? ' awake-ripple' : ''}`} />}
           {buttonIcon === 'off' && (
             <MicOff size={22} strokeWidth={1.5} style={{ color: 'var(--silver)' }} />
           )}
-          {buttonIcon === 'pi' && (
-            <PiIcon size={22} />
-          )}
-          {buttonIcon === 'claude' && (
-            <ClaudeIcon size={22} />
+          {buttonIcon === 'pi' && <PiIcon size={22} />}
+          {buttonIcon === 'claude' && <ClaudeIcon size={22} />}
+          {buttonIcon === 'omni' && (
+            <OmniIcon size={22} />
           )}
         </button>
 
         {/* Status text area */}
         <div className="voice-text">
           <div className="voice-status">
-            {status === 'idle' && mode === 'off' &&
+            {/* ── Omni mode status ── */}
+            {isOmni && omniState === 'idle' &&
+              <span style={{ color: 'var(--text-muted)' }}>Omni — say "Hey Omni" to activate</span>}
+            {isOmni && omniState === 'listening' &&
+              <span style={{ color: 'var(--silver)' }}>Listening for "Hey Omni"…</span>}
+            {isOmni && omniState === 'awake' &&
+              <span className="chromatic-text" style={{ fontWeight: 600 }}>Say your command…</span>}
+            {isOmni && omniState === 'thinking' &&
+              <span style={{ color: 'var(--silver-light)' }}>Thinking…</span>}
+            {isOmni && omniState === 'responding' && !pipeline.streamingText &&
+              <span style={{ color: 'var(--green)' }}>Speaking…</span>}
+
+            {/* ── Pi/Claude mode status ── */}
+            {!isOmni && status === 'idle' && mode === 'off' &&
               <span style={{ color: 'var(--text-muted)' }}>Tap mic to activate</span>}
-            {status === 'idle' && mode !== 'off' &&
+            {!isOmni && status === 'idle' && mode !== 'off' &&
               <span style={{ color: 'var(--text-muted)' }}>Say "Hey Omni" to activate</span>}
-            {status === 'listening' &&
+            {!isOmni && status === 'listening' &&
               <span style={{ color: 'var(--silver)' }}>Listening… say "Hey Omni"</span>}
-            {status === 'wake' &&
+            {!isOmni && status === 'wake' &&
               <span className="chromatic-text" style={{ fontWeight: 600 }}>Wake word — listening for command…</span>}
-            {status === 'agent_thinking' &&
+            {!isOmni && status === 'agent_thinking' &&
               <span style={{ color: 'var(--silver-light)' }}>{agentMessage || 'Working…'}</span>}
-            {status === 'awaiting_confirm' &&
+            {!isOmni && status === 'awaiting_confirm' &&
               <span style={{ color: '#fbbf24', fontWeight: 500 }}>
                 {agentMessage}
                 {countdown > 0 && <span style={{ color: 'var(--text-dim)', fontSize: 11, marginLeft: 6 }}>{countdown}s</span>}
               </span>}
-            {status === 'speaking' &&
+            {!isOmni && status === 'speaking' &&
               <span style={{ color: 'var(--green)' }}>"{finalReply}"</span>}
           </div>
-          {transcript && status !== 'speaking' && status !== 'agent_thinking' && status !== 'awaiting_confirm' && (
+
+          {/* ── Omni streaming text ── */}
+          {isOmni && pipeline.streamingText && (
+            <div className="voice-stream-text" aria-live="polite">
+              {pipeline.streamingText}<span className="blink-cursor">|</span>
+            </div>
+          )}
+
+          {/* ── Omni transcript ── */}
+          {isOmni && pipeline.transcript && omniState !== 'responding' && (
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>
+              Heard: "{pipeline.transcript}"
+            </div>
+          )}
+
+          {/* ── Pi/Claude transcript ── */}
+          {!isOmni && transcript && status !== 'speaking' && status !== 'agent_thinking' && status !== 'awaiting_confirm' && (
             <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4 }}>Last: "{transcript}"</div>
           )}
-          {error && (
+          {!isOmni && error && (
             <div style={{ fontSize: 11, color: '#f87171', marginTop: 4 }}>⚠ {error}</div>
           )}
-          {active && status === 'listening' && (
+          {!isOmni && active && status === 'listening' && (
             <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2, fontFamily: 'monospace' }}>
               chunks: {chunkCount} · VAD: WAITING
             </div>
           )}
-          {status === 'awaiting_confirm' && (
+          {!isOmni && status === 'awaiting_confirm' && (
             <div style={{ fontSize: 10, color: '#fbbf24', marginTop: 2 }}>
               Say "yes" or "no"
             </div>
           )}
         </div>
 
-        {/* Right controls: language dropdown */}
-        <div className="voice-controls">
-          <label className="lang-select" title="Language">
-            <span className="lang-label">Lang</span>
-            <select
-              value={lang}
-              onChange={(e) => updateLang(e.target.value)}
-              aria-label="Select language"
-            >
-              {LANGS.map((code) => (
-                <option key={code} value={code}>{code.toUpperCase()}</option>
-              ))}
-            </select>
-          </label>
-        </div>
+        {/* Right controls: language dropdown (pi/claude only) */}
+        {!isOmni && (
+          <div className="voice-controls">
+            <label className="lang-select" title="Language">
+              <span className="lang-label">Lang</span>
+              <select
+                value={lang}
+                onChange={(e) => updateLang(e.target.value)}
+                aria-label="Select language"
+              >
+                {LANGS.map((code) => (
+                  <option key={code} value={code}>{code.toUpperCase()}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
 
       </div>
 
       <div className="voice-hint">
-        PI: <em>weather</em> · <em>chores</em> · <em>play/pause</em> · <em>good night</em>
-        {' '}·{' '}
-        Claude: <em>create a script that…</em> · <em>what's in ~/Documents?</em>
+        {isOmni
+          ? <>Omni: <em>weather</em> · <em>chores</em> · <em>play/pause</em> · <em>any question</em> · <em>barge-in supported</em></>
+          : <>PI: <em>weather</em> · <em>chores</em> · <em>play/pause</em> · <em>good night</em>
+              {' '}·{' '}
+              Claude: <em>create a script that…</em> · <em>what's in ~/Documents?</em></>
+        }
       </div>
 
       <style>{`
@@ -333,6 +421,8 @@ export default function VoiceAssistant({ focused }) {
         .voice-btn.mode-claude { border-color: #7c3aed; }
         .voice-btn.mode-claude.active { border-color: #a78bfa; box-shadow: 0 0 14px rgba(167,139,250,0.25); }
         .voice-btn.mode-pi.active  { border-color: var(--silver); }
+        .voice-btn.mode-omni { border-color: #06b6d4; color: #06b6d4; }
+        .voice-btn.mode-omni.active { border-color: #22d3ee; box-shadow: 0 0 16px rgba(34,211,238,0.3); color: #22d3ee; }
 
         /* Right side controls */
         .voice-controls { display: flex; align-items: center; justify-content: flex-end; flex-shrink: 0; }
@@ -352,15 +442,39 @@ export default function VoiceAssistant({ focused }) {
         }
         .lang-select select option { color: #111; }
 
-        /* Voice ripple */
+        /* Voice ripples */
         .voice-ripple {
           position: absolute; inset: -4px; border-radius: 50%;
           border: 2px solid var(--silver); opacity: 0;
           animation: ripple 1.5s ease-out infinite;
         }
+        .omni-ripple { border-color: #22d3ee; animation-duration: 2s; }
+        .awake-ripple { border-color: #f472b6; animation-duration: 0.8s; }
         @keyframes ripple {
           0%   { transform: scale(0.9); opacity: 0.6; }
           100% { transform: scale(1.4); opacity: 0; }
+        }
+
+        /* Streaming text */
+        .voice-stream-text {
+          font-size: clamp(10px, 1.1vh, 12px);
+          color: #22d3ee;
+          margin-top: 4px;
+          line-height: 1.4;
+          display: -webkit-box;
+          -webkit-line-clamp: 3;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        .blink-cursor {
+          display: inline-block;
+          animation: blink 1s step-end infinite;
+          color: #22d3ee;
+          margin-left: 1px;
+        }
+        @keyframes blink {
+          0%, 100% { opacity: 1; }
+          50%       { opacity: 0; }
         }
 
         /* Mobile: compact */

@@ -63,7 +63,7 @@ case "$MODE" in
     cd ..
     echo "🚀  Starting server (production)..."
     cd server && bun install --frozen-lockfile 2>/dev/null || bun install
-    bun index.js
+    node --env-file=.env --import tsx/esm index.js
     ;;
 
   dev|*)
@@ -78,7 +78,7 @@ case "$MODE" in
       --names "SERVER,CLIENT" \
       --prefix-colors "cyan,magenta" \
       --kill-others-on-fail \
-      "cd server && bun --watch index.js" \
+      "cd server && node --env-file=.env --import tsx/esm --watch index.js" \
       "cd client && bun run dev"
     ;;
 

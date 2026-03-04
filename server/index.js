@@ -23,6 +23,7 @@ import spotifyRouter from './routes/spotify.js';
 import { initAgent, processVoiceCommand, processVoiceCommandSocket } from './services/agent.js';
 import { runClaudeAgent, clearClaudeHistory } from './services/claudeAgent.js';
 import { startWhisper } from './services/whisper.js';
+import { setupVoice } from './services/voice/index.ts';
 import db from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -319,6 +320,7 @@ startScheduler(io);
 startCalendarSync(io);
 initAgent(io);
 startWhisper();
+setupVoice(io, db);
 
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🖥️  OmniWall server running at http://0.0.0.0:${PORT}`);
