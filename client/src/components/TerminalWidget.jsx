@@ -337,8 +337,6 @@ export default function TerminalWidget({ focused }) {
           ))}
         </div>
       )}
-    </div>
-  );
 
       <style>{`
         .term-tile {
