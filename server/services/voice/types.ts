@@ -16,6 +16,7 @@ export interface VoiceSession {
   deepgramLiveClient: any;
   ttsAbortController: AbortController | null;
   llmAbortController: AbortController | null;
+  ttsActive: boolean; // true once TTS audio chunks are being sent
 }
 
 // ─── Events (from external sources → state machine) ─────────────────────────
@@ -31,23 +32,27 @@ export type VoiceEvent =
   | { type: 'LLM_DONE';           socketId: string; text: string }
   | { type: 'TTS_DONE';           socketId: string }
   | { type: 'WAKE_TIMEOUT';       socketId: string }
+  | { type: 'THINKING_TIMEOUT';   socketId: string }
   | { type: 'DISCONNECT';         socketId: string };
 
 // ─── Actions (state machine → agent executor) ───────────────────────────────
 
 export type VoiceAction =
-  | { type: 'START_LLM';        text: string }
+  | { type: 'START_LLM';              text: string }
+  | { type: 'RESUME_SESSION' }
   | { type: 'ABORT_TTS' }
   | { type: 'ABORT_LLM' }
-  | { type: 'EMIT_TRANSCRIPT';  text: string; isFinal: boolean }
-  | { type: 'EMIT_STREAM';      delta: string }
-  | { type: 'EMIT_STATUS';      text: string }
-  | { type: 'EMIT_DONE';        text: string }
+  | { type: 'EMIT_TRANSCRIPT';        text: string; isFinal: boolean }
+  | { type: 'EMIT_STREAM';            delta: string }
+  | { type: 'EMIT_STATUS';            text: string }
+  | { type: 'EMIT_DONE';              text: string }
   | { type: 'EMIT_INTERRUPT' }
   | { type: 'GREET_USER' }
   | { type: 'START_WAKE_TIMEOUT' }
   | { type: 'CANCEL_WAKE_TIMEOUT' }
-  | { type: 'ADD_TO_HISTORY';   role: 'user' | 'assistant'; text: string }
+  | { type: 'START_THINKING_TIMEOUT' }
+  | { type: 'CANCEL_THINKING_TIMEOUT' }
+  | { type: 'ADD_TO_HISTORY';         role: 'user' | 'assistant'; text: string }
   | { type: 'CLEANUP' };
 
 // ─── Misc ────────────────────────────────────────────────────────────────────

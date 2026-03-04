@@ -1,10 +1,12 @@
 import { createRequire } from 'module';
+import path from 'path';
+import { fileURLToPath } from 'url';
 const require = createRequire(import.meta.url);
 
 const PI_PATH = '/usr/lib/node_modules/@mariozechner/pi-coding-agent';
-const { 
-  createAgentSession, 
-  SessionManager, 
+const {
+  createAgentSession,
+  SessionManager,
   DefaultResourceLoader,
   AuthStorage,
   ModelRegistry
@@ -14,9 +16,21 @@ const { Type } = require(`${PI_PATH}/node_modules/@sinclair/typebox`);
 
 import db from '../db.js';
 
-let session = null;        // kimi-k2.5 — general tasks
-let complexSession = null; // claude-sonnet — coding / complex tasks
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SESSION_DIR = path.join(__dirname, '../data/pi-sessions');
+
+let session = null;        // gemini-3-flash — general tasks
+let complexSession = null; // claude-sonnet — coding / complex tasks (persistent)
+let _authStorage = null;
+let _modelRegistry = null;
+let _loader = null;
+let _kimiModel = null;
+let _sonnetModel = null;
+let _io = null;
 const OMNI_PORT = process.env.PORT || 3001;
+
+// Defined after initAgent runs (needs io)
+let omniTools = null;
 
 const COMPLEX_KEYWORDS = ['code', 'script', 'file', 'write', 'debug', 'install', 'run', 'bash', 'fix', 'create', 'edit', 'program'];
 
@@ -30,9 +44,12 @@ export function isComplexTask(text) {
  * We provide it with custom tools to interact with the Omni system.
  */
 export async function initAgent(io) {
+  _io = io;
   try {
     const authStorage = AuthStorage.create();
     const modelRegistry = new ModelRegistry(authStorage);
+    _authStorage = authStorage;
+    _modelRegistry = modelRegistry;
 
     // Register OpenRouter as a custom provider
     const orKey = process.env.OPENROUTER_API_KEY;
@@ -43,9 +60,9 @@ export async function initAgent(io) {
         authHeader: true,
         api: 'openai-completions',
         models: [
-          // Non-reasoning — content comes back normally
-          { id: 'moonshotai/kimi-k2',          name: 'Kimi K2',            api: 'openai-completions', contextWindow: 131072, maxTokens: 16384, reasoning: false, input: ['text'] },
-          // Reasoning model — pi-ai openai-completions provider handles anthropic/ via OpenRouter specially
+          // Gemini 3 Flash — fast, reliable tool calling
+          { id: 'google/gemini-3-flash-preview', name: 'Gemini 3 Flash', api: 'openai-completions', contextWindow: 1000000, maxTokens: 8192, reasoning: false, input: ['text'] },
+          // Reasoning model for complex tasks
           { id: 'anthropic/claude-sonnet-4-5', name: 'Claude Sonnet 4.5',  api: 'openai-completions', contextWindow: 200000, maxTokens: 16384, reasoning: true,  input: ['text'], compat: { thinkingBudget: 8000 } },
         ],
       });
@@ -55,22 +72,22 @@ export async function initAgent(io) {
     }
     
     // Custom tools for the agent to control Omni
-    const omniTools = [
+    omniTools = [
       {
         name: 'get_chores',
         label: 'Get Chores',
         description: 'Returns the list of all chores (tasks).',
         parameters: Type.Object({}),
-        execute: async () => {
+        execute: async (_id, _params) => {
           const chores = db.prepare(`
-            SELECT * FROM chores 
-            ORDER BY 
-              done ASC, 
-              CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, 
-              due_date ASC, 
+            SELECT * FROM chores
+            ORDER BY
+              done ASC,
+              CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
+              due_date ASC,
               created_at DESC
           `).all();
-          return { content: [{ type: 'text', text: JSON.stringify(chores, null, 2) }] };
+          return { content: [{ type: 'text', text: JSON.stringify(chores, null, 2) }], details: null };
         }
       },
       {
@@ -84,12 +101,12 @@ export async function initAgent(io) {
           due_date: Type.Optional(Type.String({ description: 'Due date in YYYY-MM-DD format' })),
           repeat_interval: Type.Optional(Type.String({ enum: ['daily', 'weekly', 'monthly'], description: 'Optional repeat interval' })),
         }),
-        execute: async (id, { title, assignee = '', priority = 'medium', due_date = null, repeat_interval = null }) => {
+        execute: async (_id, { title, assignee = '', priority = 'medium', due_date = null, repeat_interval = null }) => {
           const result = db.prepare('INSERT INTO chores (title, assignee, priority, due_date, repeat_interval) VALUES (?, ?, ?, ?, ?)')
                            .run(title, assignee, priority, due_date, repeat_interval);
           const chore = db.prepare('SELECT * FROM chores WHERE id = ?').get(result.lastInsertRowid);
-          io.emit('chore:added', chore);
-          return { content: [{ type: 'text', text: `Added chore: ${title}${due_date ? ' due ' + due_date : ''}${repeat_interval ? ', repeats ' + repeat_interval : ''}` }] };
+          _io?.emit('chore:added', chore);
+          return { content: [{ type: 'text', text: `Added chore: ${title}${due_date ? ' due ' + due_date : ''}${repeat_interval ? ', repeats ' + repeat_interval : ''}` }], details: null };
         }
       },
       {
@@ -99,9 +116,9 @@ export async function initAgent(io) {
         parameters: Type.Object({
           id: Type.Number({ description: 'The ID of the chore to complete' }),
         }),
-        execute: async (cid, { id }) => {
+        execute: async (_cid, { id }) => {
           const chore = db.prepare('SELECT * FROM chores WHERE id = ?').get(id);
-          if (!chore) return { content: [{ type: 'text', text: `Chore with ID ${id} not found.` }] };
+          if (!chore) return { content: [{ type: 'text', text: `Chore with ID ${id} not found.` }], details: null };
 
           // Reuse the logic for repeating chores
           const getNextDueDate = (currentDueDate, interval) => {
@@ -120,15 +137,15 @@ export async function initAgent(io) {
             if (nextDue) {
               db.prepare('UPDATE chores SET due_date = ?, done = 0 WHERE id = ?').run(nextDue, id);
               const updated = db.prepare('SELECT * FROM chores WHERE id = ?').get(id);
-              io.emit('chore:updated', updated);
-              return { content: [{ type: 'text', text: `Completed ${chore.title}. Next occurrence scheduled for ${nextDue}.` }] };
+              _io?.emit('chore:updated', updated);
+              return { content: [{ type: 'text', text: `Completed ${chore.title}. Next occurrence scheduled for ${nextDue}.` }], details: null };
             }
           }
 
           db.prepare('UPDATE chores SET done = 1 WHERE id = ?').run(id);
           const updated = db.prepare('SELECT * FROM chores WHERE id = ?').get(id);
-          io.emit('chore:updated', updated);
-          return { content: [{ type: 'text', text: `Completed chore: ${updated.title}` }] };
+          _io?.emit('chore:updated', updated);
+          return { content: [{ type: 'text', text: `Completed chore: ${updated.title}` }], details: null };
         }
       },
       {
@@ -143,9 +160,9 @@ export async function initAgent(io) {
           due_date: Type.Optional(Type.String({ description: 'New due date in YYYY-MM-DD format, or null to clear' })),
           repeat_interval: Type.Optional(Type.String({ enum: ['daily', 'weekly', 'monthly'], description: 'Repeat interval, or null to clear' })),
         }),
-        execute: async (cid, { id, title, assignee, due_date, priority, repeat_interval }) => {
+        execute: async (_cid, { id, title, assignee, due_date, priority, repeat_interval }) => {
           const chore = db.prepare('SELECT * FROM chores WHERE id = ?').get(id);
-          if (!chore) return { content: [{ type: 'text', text: `Chore with ID ${id} not found.` }] };
+          if (!chore) return { content: [{ type: 'text', text: `Chore with ID ${id} not found.` }], details: null };
 
           const updates = {};
           if (title !== undefined) updates.title = title.trim();
@@ -155,13 +172,13 @@ export async function initAgent(io) {
           if (repeat_interval !== undefined) updates.repeat_interval = repeat_interval;
 
           if (Object.keys(updates).length === 0)
-            return { content: [{ type: 'text', text: 'No changes provided.' }] };
+            return { content: [{ type: 'text', text: 'No changes provided.' }], details: null };
 
           const sets = Object.keys(updates).map(k => `${k} = ?`).join(', ');
           db.prepare(`UPDATE chores SET ${sets} WHERE id = ?`).run(...Object.values(updates), id);
           const updated = db.prepare('SELECT * FROM chores WHERE id = ?').get(id);
-          io.emit('chore:updated', updated);
-          return { content: [{ type: 'text', text: `Updated chore ${id}: ${JSON.stringify(updates)}` }] };
+          _io?.emit('chore:updated', updated);
+          return { content: [{ type: 'text', text: `Updated chore ${id}: ${JSON.stringify(updates)}` }], details: null };
         }
       },
       {
@@ -171,10 +188,10 @@ export async function initAgent(io) {
         parameters: Type.Object({
           id: Type.Number({ description: 'The ID of the chore to delete' }),
         }),
-        execute: async (cid, { id }) => {
+        execute: async (_cid, { id }) => {
           db.prepare('DELETE FROM chores WHERE id = ?').run(id);
-          io.emit('chore:deleted', { id });
-          return { content: [{ type: 'text', text: `Deleted chore ${id}.` }] };
+          _io?.emit('chore:deleted', { id });
+          return { content: [{ type: 'text', text: `Deleted chore ${id}.` }], details: null };
         }
       },
       {
@@ -184,14 +201,14 @@ export async function initAgent(io) {
         parameters: Type.Object({
           command: Type.String({ enum: ['play', 'pause', 'toggle', 'next', 'prev'] }),
         }),
-        execute: async (id, { command }) => {
+        execute: async (_id, { command }) => {
           try {
             // Internal call
             const audioService = await import('./audio.js');
             await audioService.sendCommand(command);
-            return { content: [{ type: 'text', text: `Executed audio command: ${command}` }] };
+            return { content: [{ type: 'text', text: `Executed audio command: ${command}` }], details: null };
           } catch (e) {
-            return { content: [{ type: 'text', text: `Failed to control audio: ${e.message}` }] };
+            return { content: [{ type: 'text', text: `Failed to control audio: ${e.message}` }], details: null };
           }
         }
       },
@@ -204,9 +221,9 @@ export async function initAgent(io) {
           try {
             const resp = await fetch(`http://localhost:${OMNI_PORT}/api/weather`);
             const w = await resp.json();
-            return { content: [{ type: 'text', text: JSON.stringify(w) }] };
+            return { content: [{ type: 'text', text: JSON.stringify(w) }], details: null };
           } catch {
-            return { content: [{ type: 'text', text: 'Weather data unavailable.' }] };
+            return { content: [{ type: 'text', text: 'Weather data unavailable.' }], details: null };
           }
         }
       },
@@ -217,7 +234,7 @@ export async function initAgent(io) {
         parameters: Type.Object({}),
         execute: async () => {
           const events = db.prepare('SELECT * FROM events WHERE end >= ? ORDER BY start ASC LIMIT 10').all(new Date().toISOString());
-          return { content: [{ type: 'text', text: JSON.stringify(events) }] };
+          return { content: [{ type: 'text', text: JSON.stringify(events) }], details: null };
         }
       }
     ];
@@ -245,11 +262,12 @@ RULES:
       }
     });
     await loader.reload();
+    _loader = loader;
 
-    const kimiModel   = modelRegistry.find('openrouter', 'moonshotai/kimi-k2');
-    const sonnetModel = modelRegistry.find('openrouter', 'anthropic/claude-sonnet-4-5');
+    _kimiModel   = modelRegistry.find('openrouter', 'google/gemini-3-flash-preview');
+    _sonnetModel = modelRegistry.find('openrouter', 'anthropic/claude-sonnet-4-5');
 
-    // General session (kimi-k2.5)
+    // General session — in-memory (fresh per boot)
     const result = await createAgentSession({
       sessionManager: SessionManager.inMemory(),
       authStorage,
@@ -257,29 +275,77 @@ RULES:
       resourceLoader: loader,
       customTools: omniTools,
       tools: [],
-      ...(kimiModel ? { model: kimiModel } : {}),
+      ...(_kimiModel ? { model: _kimiModel } : {}),
     });
     session = result.session;
 
-    // Complex session (claude-sonnet) — same tools, different model
-    if (sonnetModel) {
+    // Complex session — persistent (survives reboots, resumable by voice)
+    if (_sonnetModel) {
       const complexResult = await createAgentSession({
-        sessionManager: SessionManager.inMemory(),
+        sessionManager: SessionManager.create(SESSION_DIR + '/complex'),
         authStorage,
         modelRegistry,
         resourceLoader: loader,
-        customTools: omniTools,
         tools: [],
-        model: sonnetModel,
+        model: _sonnetModel,
       });
       complexSession = complexResult.session;
     }
 
-    console.log('[Agent] Omni Agent initialized (kimi-k2' + (complexSession ? ' + claude-sonnet' : '') + ').');
+    console.log('[Agent] Omni Agent initialized (gemini-3-flash' + (complexSession ? ' + claude-sonnet' : '') + ').');
   } catch (err) {
     console.error('[Agent] Initialization failed:', err);
   }
 }
+
+/**
+ * Abort current general session turn and recreate (keeps future prompts working).
+ */
+export async function abortAndRecreateSession() {
+  try {
+    if (session) session.agent.abort();
+  } catch {}
+  if (!_kimiModel || !_authStorage || !_modelRegistry || !_loader) return;
+  try {
+    const result = await createAgentSession({
+      sessionManager: SessionManager.inMemory(),
+      authStorage: _authStorage,
+      modelRegistry: _modelRegistry,
+      resourceLoader: _loader,
+      customTools: omniTools,
+      tools: [],
+      model: _kimiModel,
+    });
+    session = result.session;
+    console.log('[Agent] General session recreated after abort.');
+  } catch (err) {
+    console.error('[Agent] Session recreate error:', err.message);
+  }
+}
+
+/**
+ * Resume the persistent complex session by voice ("resume" keyword).
+ * Creates a fresh session that continues from saved disk state.
+ */
+export async function resumeComplexSession() {
+  if (!_sonnetModel || !_authStorage || !_modelRegistry || !_loader) return;
+  try {
+    const result = await createAgentSession({
+      sessionManager: SessionManager.create(SESSION_DIR + '/complex'),
+      authStorage: _authStorage,
+      modelRegistry: _modelRegistry,
+      resourceLoader: _loader,
+      tools: [],
+      model: _sonnetModel,
+      continueSession: true,
+    });
+    complexSession = result.session;
+    console.log('[Agent] Complex session resumed from disk.');
+  } catch (err) {
+    console.error('[Agent] Resume error:', err.message);
+  }
+}
+
 
 /**
  * Handle a voice command (HTTP path — returns string).
@@ -331,16 +397,34 @@ export async function processVoiceCommandSocket(text, emit, complex = false, onA
   const unsubscribe = activeSession.subscribe((event) => {
     if (event.type === 'message_update') {
       const ev = event.assistantMessageEvent;
+      console.log(`[Agent] message_update ev.type=${ev?.type} keys=${Object.keys(ev||{}).join(',')}`);
       if (ev.type === 'text_delta') {
         reply += ev.delta;
-      } else if (ev.type === 'tool_call_start') {
-        toolName = ev.toolCallEvent?.name || 'tool';
-        console.log(`[Agent] Tool call: ${toolName}`);
+      } else if (ev.type === 'toolcall_start') {
+        toolName = ev.partial?.name || ev.partial?.function?.name || 'tool';
         emit('agent:status', { text: `Using ${toolName}…` });
+      } else if (ev.type === 'toolcall_end') {
+        // customTools are NOT executed by pi agent — run them ourselves
+        const tc = ev.toolCall;
+        const name = tc?.name;
+        const args = tc?.arguments || {};
+        const tool = omniTools.find(t => t.name === name);
+        if (tool) {
+          tool.execute('manual', args).then(result => {
+            const text = result?.content?.[0]?.text;
+            console.log(`[Agent] Tool executed: ${name} → ${text?.slice(0, 80)}`);
+            if (!reply) reply = text || 'Done.';
+          }).catch(e => console.error(`[Agent] Tool error (${name}):`, e.message));
+        } else {
+          console.warn(`[Agent] Unknown tool: ${name}`);
+        }
       }
+    } else if (event.type === 'turn_end') {
+      console.log(`[Agent] turn_end toolResults: ${JSON.stringify(event.toolResults).slice(0, 500)}`);
+    } else if (event.type === 'message_end') {
+      console.log(`[Agent] message_end: ${JSON.stringify(event.message).slice(0, 400)}`);
     } else {
-      // Log other event types to debug hangs
-      if (event.type !== 'message_update') console.log(`[Agent] Event: ${event.type}`);
+      console.log(`[Agent] Event: ${event.type} keys=${Object.keys(event).join(',')}`);
     }
   });
 

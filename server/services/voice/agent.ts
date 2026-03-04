@@ -6,15 +6,16 @@ import type { VoiceSession, VoiceEvent, VoiceAction } from './types.js';
 import { processEvent } from './state.js';
 import type { DeepgramService } from './deepgram.js';
 import type { ChirpService } from './chirp.js';
-import { processVoiceCommandSocket, isComplexTask } from '../agent.js';
+import { processVoiceCommandSocket, isComplexTask, abortAndRecreateSession, resumeComplexSession } from '../agent.js';
 
 const GREETING = 'How can I help?';
 const WAKE_TIMEOUT_MS = 10_000;
 
 export class VoiceAgent {
-  private sessions    = new Map<string, VoiceSession>();
-  private wakeTimers  = new Map<string, ReturnType<typeof setTimeout>>();
-  private piAbortFns  = new Map<string, () => void>();
+  private sessions        = new Map<string, VoiceSession>();
+  private wakeTimers      = new Map<string, ReturnType<typeof setTimeout>>();
+  private thinkingTimers  = new Map<string, ReturnType<typeof setTimeout>>();
+  private piAbortFns      = new Map<string, () => void>();
 
   constructor(
     private io: SocketIOServer,
@@ -71,6 +72,7 @@ export class VoiceAgent {
       deepgramLiveClient: null,
       ttsAbortController: null,
       llmAbortController: null,
+      ttsActive: false,
     };
     this.sessions.set(socketId, session);
 
@@ -102,6 +104,7 @@ export class VoiceAgent {
     const session = this.sessions.get(socketId);
     if (!session) return;
     this.clearWakeTimer(socketId);
+    this.clearThinkingTimer(socketId);
     // Abort any in-flight operations
     session.ttsAbortController?.abort();
     this.piAbortFns.get(socketId)?.();
@@ -148,6 +151,14 @@ export class VoiceAgent {
           this.clearWakeTimer(socketId);
           break;
 
+        case 'START_THINKING_TIMEOUT':
+          this.startThinkingTimer(socketId);
+          break;
+
+        case 'CANCEL_THINKING_TIMEOUT':
+          this.clearThinkingTimer(socketId);
+          break;
+
         case 'EMIT_DONE':
           this.emit(socketId, 'voice:done', { text: action.text });
           // TTS is launched after EMIT_DONE
@@ -175,15 +186,27 @@ export class VoiceAgent {
 
         case 'ABORT_TTS': {
           const s = this.sessions.get(socketId);
+          if (s) { s.ttsActive = false; this.sessions.set(socketId, s); }
           s?.ttsAbortController?.abort();
           break;
         }
 
         case 'ABORT_LLM': {
-          this.piAbortFns.get(socketId)?.();
+          this.clearThinkingTimer(socketId);
+          const abortFn = this.piAbortFns.get(socketId);
           this.piAbortFns.delete(socketId);
+          if (abortFn) {
+            abortFn();
+            // Recreate session so future prompts work (abort corrupts session state)
+            abortAndRecreateSession().catch((e: any) =>
+              console.error('[VoiceAgent] Session recreate failed:', e.message));
+          }
           break;
         }
+
+        case 'RESUME_SESSION':
+          this.launchResumeSession(socketId);
+          break;
 
         case 'CLEANUP':
           this.destroySession(socketId);
@@ -219,6 +242,41 @@ export class VoiceAgent {
   private clearWakeTimer(socketId: string): void {
     const t = this.wakeTimers.get(socketId);
     if (t !== undefined) { clearTimeout(t); this.wakeTimers.delete(socketId); }
+  }
+
+  private startThinkingTimer(socketId: string): void {
+    this.clearThinkingTimer(socketId);
+    const t = setTimeout(() => {
+      this.thinkingTimers.delete(socketId);
+      this.dispatch({ type: 'THINKING_TIMEOUT', socketId });
+    }, 30_000);
+    this.thinkingTimers.set(socketId, t);
+  }
+
+  private clearThinkingTimer(socketId: string): void {
+    const t = this.thinkingTimers.get(socketId);
+    if (t !== undefined) { clearTimeout(t); this.thinkingTimers.delete(socketId); }
+  }
+
+  private launchResumeSession(socketId: string): void {
+    processVoiceCommandSocket('/resume', (event: string, data: any) => {
+      if (event === 'agent:status') {
+        this.emit(socketId, 'voice:status', { text: data.text });
+      } else if (event === 'agent:done') {
+        this.piAbortFns.delete(socketId);
+        this.clearThinkingTimer(socketId);
+        this.dispatch({ type: 'LLM_DONE', socketId, text: data.text || 'Session resumed.' });
+      } else if (event === 'agent:error') {
+        this.piAbortFns.delete(socketId);
+        this.clearThinkingTimer(socketId);
+        this.dispatch({ type: 'LLM_DONE', socketId, text: 'Could not resume session.' });
+      }
+    }, true, (abortFn: () => void) => {
+      this.piAbortFns.set(socketId, abortFn);
+    }).catch((err: any) => {
+      console.error('[VoiceAgent] Resume error:', err);
+      this.dispatch({ type: 'LLM_DONE', socketId, text: 'Could not resume session.' });
+    });
   }
 
   // ── Pi agent ───────────────────────────────────────────────────────────────
@@ -278,14 +336,21 @@ export class VoiceAgent {
       ctrl.signal,
       (audio, isLast) => {
         if (ctrl.signal.aborted) return;
+        // Mark TTS as active on first chunk so barge-in works
+        const s = this.sessions.get(socketId);
+        if (s && !s.ttsActive) { s.ttsActive = true; this.sessions.set(socketId, s); }
         this.emit(socketId, 'voice:audio_chunk', audio);
-        if (isLast) this.emit(socketId, 'voice:audio_end');
-        // TTS_DONE is dispatched when client confirms audio finished playing (voice:tts_played)
+        if (isLast) {
+          const s2 = this.sessions.get(socketId);
+          if (s2) { s2.ttsActive = false; this.sessions.set(socketId, s2); }
+          this.emit(socketId, 'voice:audio_end');
+        }
       },
     ).catch(err => {
       if (err?.name === 'AbortError' || err?.message === 'aborted' || ctrl.signal.aborted) return;
       console.error('[VoiceAgent] TTS error:', err);
-      // Still transition to LISTENING even if TTS fails
+      const s = this.sessions.get(socketId);
+      if (s) { s.ttsActive = false; this.sessions.set(socketId, s); }
       this.dispatch({ type: 'TTS_DONE', socketId });
     });
   }

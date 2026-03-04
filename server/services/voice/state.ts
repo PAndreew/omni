@@ -3,11 +3,23 @@
 
 import type { VoiceSession, VoiceEvent, VoiceAction } from './types.js';
 
-const WAKE_WORDS = ['omni', 'hey omni', 'hé omni', 'hej omni'];
+const WAKE_WORDS  = ['omni', 'hey omni', 'hé omni', 'hej omni'];
+const STOP_WORDS  = ['stop', 'cancel', 'pause', 'halt', 'abort', 'never mind', 'forget it'];
+const RESUME_WORDS = ['resume', 'continue session', 'open session', 'go back'];
 
 function isWakeWord(text: string): boolean {
   const t = text.toLowerCase().trim().replace(/[.,!?]/g, '');
   return WAKE_WORDS.some(w => t === w || t.endsWith(w));
+}
+
+function isStopCommand(text: string): boolean {
+  const t = text.toLowerCase().trim();
+  return STOP_WORDS.some(w => t.includes(w));
+}
+
+function isResumeCommand(text: string): boolean {
+  const t = text.toLowerCase().trim();
+  return RESUME_WORDS.some(w => t.includes(w));
 }
 
 export function processEvent(
@@ -40,14 +52,31 @@ export function processEvent(
         }
         // Non-wake-word speech while in LISTENING is silently ignored
       } else if (session.state === 'AWAKE') {
-        // User said their command after the greeting
-        nextState = 'RESPONDING';
-        actions.push({ type: 'CANCEL_WAKE_TIMEOUT' });
-        actions.push({ type: 'EMIT_TRANSCRIPT', text: event.text, isFinal: true });
-        actions.push({ type: 'ADD_TO_HISTORY', role: 'user', text: event.text });
-        actions.push({ type: 'START_LLM', text: event.text });
+        if (isResumeCommand(event.text)) {
+          nextState = 'RESPONDING';
+          actions.push({ type: 'CANCEL_WAKE_TIMEOUT' });
+          actions.push({ type: 'EMIT_STATUS', text: 'Resuming session…' });
+          actions.push({ type: 'START_THINKING_TIMEOUT' });
+          actions.push({ type: 'RESUME_SESSION' });
+        } else {
+          nextState = 'RESPONDING';
+          actions.push({ type: 'CANCEL_WAKE_TIMEOUT' });
+          actions.push({ type: 'EMIT_TRANSCRIPT', text: event.text, isFinal: true });
+          actions.push({ type: 'ADD_TO_HISTORY', role: 'user', text: event.text });
+          actions.push({ type: 'START_THINKING_TIMEOUT' });
+          actions.push({ type: 'START_LLM', text: event.text });
+        }
       } else if (session.state === 'RESPONDING') {
-        // Ignore — currently processing
+        // Stop command during thinking → abort and go back to awake
+        if (isStopCommand(event.text)) {
+          nextState = 'AWAKE';
+          actions.push({ type: 'ABORT_TTS' });
+          actions.push({ type: 'ABORT_LLM' });
+          actions.push({ type: 'CANCEL_THINKING_TIMEOUT' });
+          actions.push({ type: 'EMIT_STATUS', text: 'Say your command…' });
+          actions.push({ type: 'START_WAKE_TIMEOUT' });
+        }
+        // Other speech during thinking → ignore, let pi finish
       }
       break;
 
@@ -58,9 +87,19 @@ export function processEvent(
       }
       break;
 
-    case 'SPEECH_STARTED':
+    case 'THINKING_TIMEOUT':
       if (session.state === 'RESPONDING') {
-        // Barge-in: interrupt TTS+LLM, stay AWAKE so next transcript is treated as a command
+        nextState = 'AWAKE';
+        actions.push({ type: 'ABORT_TTS' });
+        actions.push({ type: 'ABORT_LLM' });
+        actions.push({ type: 'EMIT_STATUS', text: 'Say your command…' });
+        actions.push({ type: 'START_WAKE_TIMEOUT' });
+      }
+      break;
+
+    case 'SPEECH_STARTED':
+      // Only barge-in if TTS is actively playing — ignore SpeechStarted from user's own command
+      if (session.state === 'RESPONDING' && session.ttsActive) {
         nextState = 'AWAKE';
         actions.push({ type: 'ABORT_TTS' });
         actions.push({ type: 'ABORT_LLM' });
@@ -77,6 +116,7 @@ export function processEvent(
 
     case 'LLM_DONE':
       if (session.state === 'RESPONDING') {
+        actions.push({ type: 'CANCEL_THINKING_TIMEOUT' });
         actions.push({ type: 'ADD_TO_HISTORY', role: 'assistant', text: event.text });
         actions.push({ type: 'EMIT_DONE', text: event.text });
       }
