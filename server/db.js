@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { Database } from 'bun:sqlite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { mkdirSync } from 'fs';
