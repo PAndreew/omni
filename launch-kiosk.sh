@@ -6,6 +6,9 @@ export XAUTHORITY=/home/pi/.Xauthority
 export WAYLAND_DISPLAY=wayland-1
 export XDG_RUNTIME_DIR=/run/user/1000
 
+# Kill DSI-2 — app lives on the TV (HDMI-A-2) only.
+wlr-randr --output DSI-2 --off 2>/dev/null || true
+
 # Kill the panel and its respawner so it doesn't eat 68px of screen.
 pkill -f 'wfrespawn wf-panel-pi' 2>/dev/null || true
 pkill -f 'wf-panel-pi'           2>/dev/null || true
