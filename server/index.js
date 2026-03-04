@@ -320,7 +320,7 @@ startScheduler(io);
 startCalendarSync(io);
 initAgent(io);
 startWhisper();
-setupVoice(io, db);
+setupVoice(io);
 
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🖥️  OmniWall server running at http://0.0.0.0:${PORT}`);

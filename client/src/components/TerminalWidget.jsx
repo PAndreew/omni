@@ -34,7 +34,7 @@ function playPing() {
 
 function notifyNeedsInput(sessionIndex) {
   playPing();
-  if (Notification.permission === 'granted') {
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     new Notification('Terminal waiting for input', {
       body: `Session ${sessionIndex} needs your attention`,
       icon: '/favicon.ico',

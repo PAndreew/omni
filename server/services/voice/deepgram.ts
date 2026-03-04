@@ -24,8 +24,6 @@ export class DeepgramService {
     const live = this.client.listen.live({
       model: 'nova-2',
       language: 'multi',
-      encoding: 'opus',
-      sample_rate: 48000,
       interim_results: true,
       endpointing: 300,
       utterance_end_ms: 1000,

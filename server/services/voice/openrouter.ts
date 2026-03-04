@@ -3,15 +3,23 @@
 import OpenAI from 'openai';
 import type { AgentTool, TaskComplexity, ConversationMessage } from './types.js';
 
-const SIMPLE_KEYWORDS  = ['weather', 'chore', 'task', 'music', 'play', 'pause', 'calendar', 'schedule', 'time', 'date'];
+const SIMPLE_KEYWORDS  = [
+  'weather', 'chore', 'task', 'music', 'play', 'pause', 'calendar', 'schedule', 'time', 'date',
+  'remind', 'reminder', 'add', 'tomorrow', 'appointment', 'meeting', 'call', 'phone', 'event',
+  'today', 'week', 'next', 'upcoming', 'temperature', 'forecast',
+];
 const COMPLEX_KEYWORDS = ['code', 'script', 'file', 'write', 'debug', 'install', 'run', 'bash', 'fix', 'create', 'edit'];
 
-const SYSTEM_PROMPT = `You are Omni, a helpful home assistant running on a Raspberry Pi.
+const SYSTEM_PROMPT = `You are Omni, a helpful home assistant running on a Raspberry Pi wall display.
 You help with chores, weather, calendar events, music control, and general questions.
 Complex tasks (coding, files, scripts, system commands) are handled by a separate agent — just answer the user's conversational or lookup questions here.
-Be concise — your responses will be spoken aloud via TTS.
-Keep answers under 3 sentences unless the user asks for detail.
-When using tools, always provide a friendly spoken summary of results.`;
+
+IMPORTANT RULES:
+- Be concise — your responses will be spoken aloud via TTS. Keep answers under 2-3 sentences.
+- When someone says "remind me to X", "we need to call X", "I need to do X", "add X" → use add_chore with a clear title and due_date if mentioned.
+- When someone asks what's coming up, check get_calendar first.
+- Before using a tool, always say one short sentence out loud (e.g. "Let me check that." or "Adding that to the list."). This becomes the spoken response while the tool runs.
+- After tools complete, summarise the result naturally as if speaking to someone — no bullet points, no markdown.`;
 
 export class OpenRouterService {
   private client: OpenAI;

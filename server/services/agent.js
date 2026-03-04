@@ -14,8 +14,16 @@ const { Type } = require(`${PI_PATH}/node_modules/@sinclair/typebox`);
 
 import db from '../db.js';
 
-let session = null;
+let session = null;        // kimi-k2.5 — general tasks
+let complexSession = null; // claude-sonnet — coding / complex tasks
 const OMNI_PORT = process.env.PORT || 3001;
+
+const COMPLEX_KEYWORDS = ['code', 'script', 'file', 'write', 'debug', 'install', 'run', 'bash', 'fix', 'create', 'edit', 'program'];
+
+export function isComplexTask(text) {
+  const lower = text.toLowerCase();
+  return COMPLEX_KEYWORDS.some(k => lower.includes(k));
+}
 
 /**
  * Initialize the Omni coding agent session.
@@ -25,6 +33,24 @@ export async function initAgent(io) {
   try {
     const authStorage = AuthStorage.create();
     const modelRegistry = new ModelRegistry(authStorage);
+
+    // Register OpenRouter as a custom provider
+    const orKey = process.env.OPENROUTER_API_KEY;
+    if (orKey) {
+      modelRegistry.registerProvider('openrouter', {
+        baseUrl: 'https://openrouter.ai/api/v1',
+        apiKey: orKey,
+        authHeader: true,
+        api: 'openai-completions',
+        models: [
+          { id: 'moonshotai/kimi-k2.5',        name: 'Kimi K2.5',          api: 'openai-completions', contextWindow: 131072, maxTokens: 16384, reasoning: false, input: ['text'] },
+          { id: 'anthropic/claude-sonnet-4-5',  name: 'Claude Sonnet 4.5',  api: 'openai-completions', contextWindow: 200000, maxTokens: 16384, reasoning: false, input: ['text'] },
+        ],
+      });
+      console.log('[Agent] OpenRouter provider registered.');
+    } else {
+      console.warn('[Agent] OPENROUTER_API_KEY missing — using default model.');
+    }
     
     // Custom tools for the agent to control Omni
     const omniTools = [
@@ -213,17 +239,36 @@ IMPORTANT: Always respond in the same language the user spoke in. If they speak 
     });
     await loader.reload();
 
+    const kimiModel   = modelRegistry.find('openrouter', 'moonshotai/kimi-k2.5');
+    const sonnetModel = modelRegistry.find('openrouter', 'anthropic/claude-sonnet-4-5');
+
+    // General session (kimi-k2.5)
     const result = await createAgentSession({
       sessionManager: SessionManager.inMemory(),
       authStorage,
       modelRegistry,
       resourceLoader: loader,
       customTools: omniTools,
-      tools: [], 
+      tools: [],
+      ...(kimiModel ? { model: kimiModel } : {}),
     });
-
     session = result.session;
-    console.log('[Agent] Omni Agent initialized.');
+
+    // Complex session (claude-sonnet) — same tools, different model
+    if (sonnetModel) {
+      const complexResult = await createAgentSession({
+        sessionManager: SessionManager.inMemory(),
+        authStorage,
+        modelRegistry,
+        resourceLoader: loader,
+        customTools: omniTools,
+        tools: [],
+        model: sonnetModel,
+      });
+      complexSession = complexResult.session;
+    }
+
+    console.log('[Agent] Omni Agent initialized (kimi-k2.5' + (complexSession ? ' + claude-sonnet' : '') + ').');
   } catch (err) {
     console.error('[Agent] Initialization failed:', err);
   }
@@ -259,17 +304,23 @@ export async function processVoiceCommand(text) {
  * @param {string}   text  - User's voice command
  * @param {Function} emit  - (event, data) => void
  */
-export async function processVoiceCommandSocket(text, emit) {
-  if (!session) {
+export async function processVoiceCommandSocket(text, emit, complex = false, onAbortReady = null) {
+  const activeSession = (complex && complexSession) ? complexSession : session;
+  if (!activeSession) {
     emit('agent:done', { text: "I'm sorry, my brain isn't fully loaded yet." });
     return;
   }
+
+  // Expose abort handle before we await anything
+  if (onAbortReady) onAbortReady(() => {
+    try { activeSession.agent.abort(); } catch {}
+  });
 
   emit('agent:status', { text: 'Thinking…' });
 
   let reply = '';
   let toolName = '';
-  const unsubscribe = session.subscribe((event) => {
+  const unsubscribe = activeSession.subscribe((event) => {
     if (event.type === 'message_update') {
       const ev = event.assistantMessageEvent;
       if (ev.type === 'text_delta') {
@@ -282,8 +333,8 @@ export async function processVoiceCommandSocket(text, emit) {
   });
 
   try {
-    await session.prompt(text);
-    await session.agent.waitForIdle();
+    await activeSession.prompt(text);
+    await activeSession.agent.waitForIdle();
     emit('agent:done', { text: reply || "Done." });
   } catch (err) {
     console.error('[Agent] Error processing command:', err);

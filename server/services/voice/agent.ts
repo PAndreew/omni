@@ -5,10 +5,8 @@ import type { Server as SocketIOServer } from 'socket.io';
 import type { VoiceSession, VoiceEvent, VoiceAction } from './types.js';
 import { processEvent } from './state.js';
 import type { DeepgramService } from './deepgram.js';
-import type { OpenRouterService } from './openrouter.js';
 import type { ChirpService } from './chirp.js';
-import type { AgentTool } from './types.js';
-import { processVoiceCommandSocket } from '../agent.js';
+import { processVoiceCommandSocket, isComplexTask } from '../agent.js';
 
 const GREETING = 'How can I help?';
 const WAKE_TIMEOUT_MS = 10_000;
@@ -16,13 +14,12 @@ const WAKE_TIMEOUT_MS = 10_000;
 export class VoiceAgent {
   private sessions    = new Map<string, VoiceSession>();
   private wakeTimers  = new Map<string, ReturnType<typeof setTimeout>>();
+  private piAbortFns  = new Map<string, () => void>();
 
   constructor(
     private io: SocketIOServer,
     private dg: DeepgramService,
-    private or: OpenRouterService,
     private chirp: ChirpService,
-    private tools: (AgentTool & { __execute: (args: any) => any })[],
   ) {}
 
   private getSocket(socketId: string) {
@@ -80,6 +77,7 @@ export class VoiceAgent {
     // Open Deepgram live connection
     const live = this.dg.openLiveSession({
       onTranscript: (text, isFinal) => {
+        if (isFinal) console.log(`[VoiceAgent] Transcript (${socketId.slice(0,6)}): "${text}"`);
         this.dispatch({ type: isFinal ? 'TRANSCRIPT_FINAL' : 'TRANSCRIPT_INTERIM', socketId, text });
       },
       onSpeechStarted: () => {
@@ -106,7 +104,8 @@ export class VoiceAgent {
     this.clearWakeTimer(socketId);
     // Abort any in-flight operations
     session.ttsAbortController?.abort();
-    session.llmAbortController?.abort();
+    this.piAbortFns.get(socketId)?.();
+    this.piAbortFns.delete(socketId);
     // Close Deepgram
     if (session.deepgramLiveClient) {
       this.dg.closeSession(session.deepgramLiveClient);
@@ -171,7 +170,7 @@ export class VoiceAgent {
         }
 
         case 'START_LLM':
-          this.launchLLM(socketId, action.text);
+          this.launchPiAgent(socketId, action.text);
           break;
 
         case 'ABORT_TTS': {
@@ -181,8 +180,8 @@ export class VoiceAgent {
         }
 
         case 'ABORT_LLM': {
-          const s = this.sessions.get(socketId);
-          s?.llmAbortController?.abort();
+          this.piAbortFns.get(socketId)?.();
+          this.piAbortFns.delete(socketId);
           break;
         }
 
@@ -222,63 +221,46 @@ export class VoiceAgent {
     if (t !== undefined) { clearTimeout(t); this.wakeTimers.delete(socketId); }
   }
 
-  // ── LLM streaming ──────────────────────────────────────────────────────────
-
-  private launchLLM(socketId: string, text: string): void {
-    const session = this.sessions.get(socketId);
-    if (!session) return;
-
-    const complexity = this.or.classifyComplexity(text);
-
-    // Complex tasks → delegate to pi agent
-    if (complexity === 'complex') {
-      this.launchPiAgent(socketId, text);
-      return;
-    }
-
-    const ctrl = new AbortController();
-    session.llmAbortController = ctrl;
-    this.sessions.set(socketId, session);
-
-    this.emit(socketId, 'voice:status', { text: 'Thinking…' });
-
-    this.or.streamResponse(
-      text,
-      session.history,
-      this.tools,
-      (status) => {
-        this.emit(socketId, 'voice:status', { text: status });
-      },
-      (delta) => {
-        this.dispatch({ type: 'LLM_DELTA', socketId, delta });
-      },
-      (fullText) => {
-        this.dispatch({ type: 'LLM_DONE', socketId, text: fullText });
-      },
-      ctrl.signal,
-    ).catch(err => {
-      if (err?.name === 'AbortError' || ctrl.signal.aborted) return;
-      console.error('[VoiceAgent] LLM error:', err);
-      this.emit(socketId, 'voice:status', { text: 'Something went wrong.' });
-    });
-  }
+  // ── Pi agent ───────────────────────────────────────────────────────────────
 
   private launchPiAgent(socketId: string, text: string): void {
-    console.log(`[VoiceAgent] Delegating to pi agent: "${text}"`);
-    this.emit(socketId, 'voice:status', { text: 'Working on it…' });
+    const complex = isComplexTask(text);
+    console.log(`[VoiceAgent] → pi agent (${complex ? 'sonnet' : 'kimi'}): "${text}"`);
+    this.emit(socketId, 'voice:status', { text: 'On it…' });
 
     processVoiceCommandSocket(text, (event: string, data: any) => {
       if (event === 'agent:status') {
         this.emit(socketId, 'voice:status', { text: data.text });
       } else if (event === 'agent:done') {
+        this.piAbortFns.delete(socketId);
         this.dispatch({ type: 'LLM_DONE', socketId, text: data.text || 'Done.' });
       } else if (event === 'agent:error') {
+        this.piAbortFns.delete(socketId);
         this.dispatch({ type: 'LLM_DONE', socketId, text: data.text || 'Something went wrong.' });
       }
+    }, complex, (abortFn: () => void) => {
+      this.piAbortFns.set(socketId, abortFn);
     }).catch((err: any) => {
       console.error('[VoiceAgent] Pi agent error:', err);
       this.dispatch({ type: 'LLM_DONE', socketId, text: 'The agent encountered an error.' });
     });
+  }
+
+  // ── Quick status TTS (fire-and-forget, no queue coordination) ─────────────
+
+  private speakStatus(socketId: string, text: string, signal: AbortSignal): void {
+    const ctrl = new AbortController();
+    // Abort if the LLM itself is aborted
+    signal.addEventListener('abort', () => ctrl.abort(), { once: true });
+    this.chirp.synthesizeStreaming(
+      text,
+      ctrl.signal,
+      (audio, isLast) => {
+        if (ctrl.signal.aborted) return;
+        this.emit(socketId, 'voice:audio_chunk', audio);
+        if (isLast) this.emit(socketId, 'voice:audio_end');
+      },
+    ).catch(() => {});
   }
 
   // ── TTS synthesis + streaming ──────────────────────────────────────────────

@@ -17,6 +17,7 @@ export function useVoicePipeline() {
   const audioQueue    = useRef([]);
   const isPlayingRef  = useRef(false);
   const sourceRef     = useRef(null);   // current AudioBufferSourceNode
+  const ttsActiveRef  = useRef(false);  // true while TTS is playing — mute mic to prevent echo
 
   // ── TTS Playback via Web Audio API ────────────────────────────────────────
 
@@ -92,15 +93,18 @@ export function useVoicePipeline() {
         : data?.buffer ? data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
         : null;
       if (!ab) return;
+      ttsActiveRef.current = true;  // mute mic while TTS is playing
       audioQueue.current.push(ab);
       playNextChunk();
     };
 
     const onAudioEnd = () => {
-      // Wait for queue to drain, then go back to listening
+      // Wait for queue to drain, then unmute mic and go back to listening
       const check = setInterval(() => {
         if (!isPlayingRef.current && audioQueue.current.length === 0) {
           clearInterval(check);
+          // Small delay so the last audio frame clears the mic before we start sending again
+          setTimeout(() => { ttsActiveRef.current = false; }, 400);
           setState('listening');
           setStreamingText('');
         }
@@ -109,6 +113,7 @@ export function useVoicePipeline() {
 
     const onInterrupt = () => {
       stopAudio();
+      ttsActiveRef.current = false;
       setStreamingText('');
       setState('listening');
     };
@@ -146,7 +151,9 @@ export function useVoicePipeline() {
 
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
-        : 'audio/webm';
+        : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : 'audio/mp4';
 
       const recorder = new MediaRecorder(stream, {
         mimeType,
@@ -159,6 +166,7 @@ export function useVoicePipeline() {
 
       recorder.ondataavailable = async (e) => {
         if (e.data.size === 0) return;
+        if (ttsActiveRef.current) return;  // don't send mic audio while TTS is playing (echo prevention)
         const buf = await e.data.arrayBuffer();
         socket.emit('voice:audio', buf);
       };
