@@ -73,8 +73,8 @@ export function useVoicePipeline() {
 
     const onStatus = ({ text }) => {
       const t = text.toLowerCase();
-      if (t.includes('thinking') || t.includes('checking')) setState('thinking');
-      else if (t.includes('command')) setState('awake');
+      if (t.includes('thinking') || t.includes('checking') || t.includes('on it') || t.includes('using')) setState('thinking');
+      else if (t.includes('command') || t.includes('say your')) setState('awake');
       else setState('listening');
     };
 
@@ -99,13 +99,15 @@ export function useVoicePipeline() {
     };
 
     const onAudioEnd = () => {
-      // Wait for queue to drain, then unmute mic and go back to listening
+      // Wait for queue to drain, then notify server that audio finished playing
       const check = setInterval(() => {
         if (!isPlayingRef.current && audioQueue.current.length === 0) {
           clearInterval(check);
-          // Small delay so the last audio frame clears the mic before we start sending again
-          setTimeout(() => { ttsActiveRef.current = false; }, 400);
-          setState('listening');
+          setTimeout(() => {
+            ttsActiveRef.current = false;
+            // Tell server TTS has actually finished playing — server uses this to start listen timeout
+            getSocket().emit('voice:tts_played');
+          }, 400);
           setStreamingText('');
         }
       }, 100);

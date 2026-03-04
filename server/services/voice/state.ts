@@ -87,6 +87,7 @@ export function processEvent(
       if (session.state === 'RESPONDING') {
         // Stay AWAKE for follow-up turns; a new wake timeout starts the silence countdown
         nextState = 'AWAKE';
+        actions.push({ type: 'EMIT_STATUS', text: 'Say your command…' });
         actions.push({ type: 'START_WAKE_TIMEOUT' });
       }
       break;

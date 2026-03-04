@@ -33,6 +33,11 @@ export function setupVoice(io: SocketIOServer): void {
       agent.dispatch({ type: 'AUDIO_STOP', socketId: socket.id });
     });
 
+    // Client confirms TTS finished playing — now safe to start the follow-up listen window
+    socket.on('voice:tts_played', () => {
+      agent.dispatch({ type: 'TTS_DONE', socketId: socket.id });
+    });
+
     socket.on('disconnect', () => {
       agent.dispatch({ type: 'DISCONNECT', socketId: socket.id });
     });

@@ -279,10 +279,8 @@ export class VoiceAgent {
       (audio, isLast) => {
         if (ctrl.signal.aborted) return;
         this.emit(socketId, 'voice:audio_chunk', audio);
-        if (isLast) {
-          this.emit(socketId, 'voice:audio_end');
-          this.dispatch({ type: 'TTS_DONE', socketId });
-        }
+        if (isLast) this.emit(socketId, 'voice:audio_end');
+        // TTS_DONE is dispatched when client confirms audio finished playing (voice:tts_played)
       },
     ).catch(err => {
       if (err?.name === 'AbortError' || err?.message === 'aborted' || ctrl.signal.aborted) return;
