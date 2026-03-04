@@ -119,17 +119,65 @@ function makeAskFn(socketId) {
 }
 
 // ─── PTY session store ───────────────────────────────────────────────────────
-// Each entry: { proc, socketId, dataDisposable, cleanupTimer }
+// Each entry: { proc, socketId, outputBuffer, inputDebounce, needsInput }
+// Sessions are NEVER auto-killed — they persist until the process exits naturally
+// or the user explicitly closes the tab (term:close event).
 const ptySessions = {};
-const PTY_GRACE_MS = 5 * 60 * 1000; // 5 minutes before killing a detached session
+
+function stripAnsi(s) {
+  return s.replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*(\x07|\x1b\\)|\x1b./g, '');
+}
+
+// Patterns that suggest the terminal is waiting for user input
+const PROMPT_PATTERNS = [
+  /[\$#%]\s*$/,           // shell prompts: $ # %
+  />\s*$/,                // node/python REPL >
+  /\?\s*$/,               // inquirer / interactive questions
+  /\[Y\/n\]\s*$/i,
+  /\[y\/N\]\s*$/i,
+  /\(yes\/no\)\s*$/i,
+  /password:\s*$/i,
+  /press enter/i,
+  /continue\?/i,
+  /proceed\?/i,
+  /\[confirm\]/i,
+];
+
+function looksLikeWaitingForInput(buf) {
+  const text = stripAnsi(buf).replace(/\r/g, '').trimEnd();
+  const lastLine = text.split('\n').filter(Boolean).pop() || '';
+  return PROMPT_PATTERNS.some(r => r.test(lastLine));
+}
+
+function monitorOutput(id, data) {
+  const s = ptySessions[id];
+  if (!s) return;
+  // Keep a rolling buffer of the last 500 chars for prompt detection
+  s.outputBuffer = (s.outputBuffer + data).slice(-500);
+  // When new output arrives, clear any pending needs-input state
+  if (s.needsInput) {
+    s.needsInput = false;
+    io.emit('term:activity', { id });
+  }
+  // Debounce: after 2s of silence, check if output looks like a prompt
+  if (s.inputDebounce) clearTimeout(s.inputDebounce);
+  s.inputDebounce = setTimeout(() => {
+    s.inputDebounce = null;
+    if (ptySessions[id] && looksLikeWaitingForInput(s.outputBuffer)) {
+      s.needsInput = true;
+      io.emit('term:needs-input', { id });
+    }
+  }, 2000);
+}
 
 function attachPtySocket(id, socket) {
   const s = ptySessions[id];
   if (!s) return;
-  if (s.dataDisposable) { try { s.dataDisposable.dispose(); } catch {} }
-  if (s.cleanupTimer)   { clearTimeout(s.cleanupTimer); s.cleanupTimer = null; }
-  s.socketId       = socket.id;
-  s.dataDisposable = s.proc.onData(data => socket.emit('term:data', { id, data }));
+  // Update which socket receives output — the proc.onData handler reads
+  // session.socketId dynamically so no listener churn needed.
+  s.socketId = socket.id;
+  // If session was already waiting for input, notify the new socket immediately
+  if (s.needsInput) socket.emit('term:needs-input', { id });
 }
 
 function spawnPty(id, cols, rows, socket) {
@@ -150,15 +198,20 @@ function spawnPty(id, cols, rows, socket) {
       cwd: process.env.HOME || '/home/pi',
       env: { ...process.env, TERM: 'xterm-256color' },
     });
-    const session = { proc, socketId: socket.id, dataDisposable: null, cleanupTimer: null };
+    const session = { proc, socketId: socket.id, outputBuffer: '', inputDebounce: null, needsInput: false };
     ptySessions[id] = session;
-    session.dataDisposable = proc.onData(data => socket.emit('term:data', { id, data }));
+    // Single always-on handler: forward to current socket + monitor for prompts.
+    // We intentionally never dispose this — the PTY keeps running after disconnect.
+    proc.onData(data => {
+      const sock = io.sockets.sockets.get(session.socketId);
+      if (sock?.connected) sock.emit('term:data', { id, data });
+      monitorOutput(id, data);
+    });
     proc.onExit(({ exitCode, signal }) => {
       console.log(`[PTY] Session ${id} exited (code=${exitCode} sig=${signal})`);
-      const s = ptySessions[id];
-      if (s?.cleanupTimer) clearTimeout(s.cleanupTimer);
+      if (ptySessions[id]?.inputDebounce) clearTimeout(ptySessions[id].inputDebounce);
       delete ptySessions[id];
-      if (socket.connected) socket.emit('term:closed', { id });
+      io.emit('term:closed', { id });
     });
   } catch (err) {
     console.error(`[PTY] Failed to spawn PTY for ${id}:`, err);
@@ -227,11 +280,25 @@ io.on('connection', (socket) => {
     console.log(`[WS] term:open session=${id} cols=${cols} rows=${rows}`);
     spawnPty(id, cols, rows, socket);
   });
-  socket.on('term:input',  ({ id, data }) => { if (ptySessions[id]) ptySessions[id].proc.write(data); });
+  socket.on('term:input',  ({ id, data }) => {
+    const s = ptySessions[id];
+    if (!s) return;
+    s.proc.write(data);
+    // User typed → clear any pending needs-input flag
+    if (s.needsInput) {
+      s.needsInput = false;
+      if (s.inputDebounce) { clearTimeout(s.inputDebounce); s.inputDebounce = null; }
+      io.emit('term:activity', { id });
+    }
+  });
   socket.on('term:resize', ({ id, cols, rows }) => { if (ptySessions[id]) ptySessions[id].proc.resize(cols, rows); });
   socket.on('term:close',  ({ id }) => {
     const s = ptySessions[id];
-    if (s) { if (s.cleanupTimer) clearTimeout(s.cleanupTimer); try { s.proc.kill(); } catch {} delete ptySessions[id]; }
+    if (s) {
+      if (s.inputDebounce) clearTimeout(s.inputDebounce);
+      try { s.proc.kill(); } catch {}
+      delete ptySessions[id];
+    }
   });
 
   socket.on('disconnect', () => {
@@ -240,18 +307,8 @@ io.on('connection', (socket) => {
     const p = pendingAsks[socket.id];
     if (p) { clearTimeout(p.timer); delete pendingAsks[socket.id]; p.reject(new Error('disconnected')); }
     clearClaudeHistory(socket.id);
-
-    for (const [id, s] of Object.entries(ptySessions)) {
-      if (s.socketId === socket.id) {
-        // Detach data pipe but keep PTY alive for grace period
-        if (s.dataDisposable) { try { s.dataDisposable.dispose(); } catch {} s.dataDisposable = null; }
-        s.cleanupTimer = setTimeout(() => {
-          console.log(`[PTY] Grace period expired, killing session ${id}`);
-          try { s.proc.kill(); } catch {}
-          delete ptySessions[id];
-        }, PTY_GRACE_MS);
-      }
-    }
+    // PTY sessions are NOT killed on disconnect — they run indefinitely until
+    // the process exits or the user explicitly closes them.
   });
 });
 

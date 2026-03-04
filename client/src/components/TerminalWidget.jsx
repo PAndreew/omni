@@ -8,11 +8,39 @@ import '@xterm/xterm/css/xterm.css';
 let sessionCounter = Date.now() % 100000;
 
 const STORAGE_KEY = 'omni:term:sessions';
+// localStorage so sessions survive full browser close/reopen
 function loadPersistedSessions() {
-  try { const s = sessionStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
+  try { const s = localStorage.getItem(STORAGE_KEY); return s ? JSON.parse(s) : null; } catch { return null; }
 }
 function persistSessions(sessions) {
-  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(sessions)); } catch {}
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions)); } catch {}
+}
+
+function playPing() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.4);
+  } catch {}
+}
+
+function notifyNeedsInput(sessionIndex) {
+  playPing();
+  if (Notification.permission === 'granted') {
+    new Notification('Terminal waiting for input', {
+      body: `Session ${sessionIndex} needs your attention`,
+      icon: '/favicon.ico',
+      tag: 'term-needs-input',
+    });
+  }
 }
 
 function Session({ id, active, onClose, onActivate }) {
@@ -127,15 +155,51 @@ export default function TerminalWidget({ focused }) {
   const rootRef = useRef(null);
   const [sessions, setSessions] = useState(() => {
     const saved = loadPersistedSessions();
-    return saved?.length ? saved : [{ id: `term-${++sessionCounter}` }];
+    // Strip any transient fields from persisted data
+    return saved?.length ? saved.map(s => ({ id: s.id })) : [{ id: `term-${++sessionCounter}` }];
   });
   const [activeId, setActiveId] = useState(() => {
     const saved = loadPersistedSessions();
     return saved?.length ? saved[saved.length - 1].id : `term-${sessionCounter}`;
   });
+  // Track which sessions are waiting for input (show dot on tab)
+  const [activityIds, setActivityIds] = useState(new Set());
 
-  // Persist session list whenever it changes
-  useEffect(() => { persistSessions(sessions); }, [sessions]);
+  // Listen for server-side needs-input / activity events
+  useEffect(() => {
+    const socket = getSocket();
+    const onNeedsInput = ({ id }) => {
+      setActivityIds(prev => {
+        if (prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+      // Only ping if this session isn't currently active and focused
+      setSessions(current => {
+        const idx = current.findIndex(s => s.id === id);
+        notifyNeedsInput(idx + 1);
+        return current;
+      });
+    };
+    const onActivity = ({ id }) => {
+      setActivityIds(prev => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    };
+    socket.on('term:needs-input', onNeedsInput);
+    socket.on('term:activity', onActivity);
+    return () => {
+      socket.off('term:needs-input', onNeedsInput);
+      socket.off('term:activity', onActivity);
+    };
+  }, []);
+
+  // Persist session list whenever it changes (only id, no transient state)
+  useEffect(() => { persistSessions(sessions.map(s => ({ id: s.id }))); }, [sessions]);
 
   const focusTerminalFor = useCallback((sessionId) => {
     const root = rootRef.current;
@@ -201,9 +265,14 @@ export default function TerminalWidget({ focused }) {
           {sessions.map((s, i) => (
             <button
               key={s.id}
-              className={`term-tab ${s.id === activeId ? 'active' : ''}`}
-              onClick={() => { setActiveId(s.id); setTimeout(() => focusTerminalFor(s.id), 0); }}
+              className={`term-tab ${s.id === activeId ? 'active' : ''} ${activityIds.has(s.id) ? 'needs-input' : ''}`}
+              onClick={() => {
+                setActiveId(s.id);
+                setActivityIds(prev => { const n = new Set(prev); n.delete(s.id); return n; });
+                setTimeout(() => focusTerminalFor(s.id), 0);
+              }}
             >
+              {activityIds.has(s.id) && <span className="term-tab-dot" />}
               <span>{i + 1}</span>
               <span className="term-tab-close" onClick={e => { e.stopPropagation(); closeSession(s.id); }}>
                 <X size={10} strokeWidth={2} />
@@ -249,6 +318,16 @@ export default function TerminalWidget({ focused }) {
         }
         .term-tab:hover { color: var(--silver); border-color: var(--border); }
         .term-tab.active { color: var(--silver-light); border-color: var(--border); background: var(--surface-2); }
+        .term-tab.needs-input { color: #56b6c2; }
+        .term-tab-dot {
+          width: 5px; height: 5px; border-radius: 50%;
+          background: #56b6c2; flex-shrink: 0;
+          animation: tab-pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes tab-pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.3; }
+        }
         .term-tab-close {
           display: flex; align-items: center; opacity: 0.4;
           transition: opacity 0.15s;
