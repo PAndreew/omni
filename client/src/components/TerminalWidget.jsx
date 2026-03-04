@@ -366,10 +366,6 @@ export default function TerminalWidget({ focused }) {
           background: #56b6c2; flex-shrink: 0;
           animation: tab-pulse 1.5s ease-in-out infinite;
         }
-        @keyframes tab-pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.3; }
-        }
         .term-tab-close {
           display: flex; align-items: center; opacity: 0.4;
           transition: opacity 0.15s;

@@ -214,3 +214,8 @@ html, body, #root {
   animation: ripple 1.5s ease-out infinite;
   pointer-events: none;
 }
+
+@keyframes tab-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
