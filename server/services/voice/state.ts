@@ -34,10 +34,9 @@ export function processEvent(
     case 'TRANSCRIPT_FINAL':
       if (session.state === 'LISTENING') {
         if (isWakeWord(event.text)) {
-          // Wake word detected → greet and wait for command
+          // Wake word detected → greet; wake timeout starts after greeting finishes playing
           nextState = 'AWAKE';
           actions.push({ type: 'GREET_USER' });
-          actions.push({ type: 'START_WAKE_TIMEOUT' });
         }
         // Non-wake-word speech while in LISTENING is silently ignored
       } else if (session.state === 'AWAKE') {
@@ -84,8 +83,8 @@ export function processEvent(
       break;
 
     case 'TTS_DONE':
-      if (session.state === 'RESPONDING') {
-        // Stay AWAKE for follow-up turns; a new wake timeout starts the silence countdown
+      // Fires when client confirms audio finished playing (greeting OR command response)
+      if (session.state === 'AWAKE' || session.state === 'RESPONDING') {
         nextState = 'AWAKE';
         actions.push({ type: 'EMIT_STATUS', text: 'Say your command…' });
         actions.push({ type: 'START_WAKE_TIMEOUT' });

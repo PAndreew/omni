@@ -324,31 +324,47 @@ export async function processVoiceCommandSocket(text, emit, complex = false, onA
   });
 
   emit('agent:status', { text: 'Thinking…' });
+  console.log(`[Agent] Prompting session (${complex ? 'sonnet' : 'kimi'}): "${text}"`);
 
   let reply = '';
   let toolName = '';
   const unsubscribe = activeSession.subscribe((event) => {
     if (event.type === 'message_update') {
       const ev = event.assistantMessageEvent;
-      // Only accumulate actual text — skip thinking/reasoning tokens
       if (ev.type === 'text_delta') {
         reply += ev.delta;
       } else if (ev.type === 'tool_call_start') {
         toolName = ev.toolCallEvent?.name || 'tool';
+        console.log(`[Agent] Tool call: ${toolName}`);
         emit('agent:status', { text: `Using ${toolName}…` });
       }
-      // thinking_delta / reasoning_delta are intentionally ignored
+    } else {
+      // Log other event types to debug hangs
+      if (event.type !== 'message_update') console.log(`[Agent] Event: ${event.type}`);
     }
   });
+
+  // Timeout fallback so we never hang forever
+  let settled = false;
+  const timeout = setTimeout(() => {
+    if (!settled) {
+      console.error('[Agent] Timeout — aborting session');
+      try { activeSession.agent.abort(); } catch {}
+    }
+  }, 25000);
 
   try {
     await activeSession.prompt(text);
     await activeSession.agent.waitForIdle();
+    settled = true;
+    console.log(`[Agent] Done. Reply length: ${reply.length}`);
     emit('agent:done', { text: reply || "Done." });
   } catch (err) {
-    console.error('[Agent] Error processing command:', err);
+    settled = true;
+    console.error('[Agent] Error processing command:', err?.message ?? err);
     emit('agent:error', { text: "I encountered an error while processing your request." });
   } finally {
+    clearTimeout(timeout);
     unsubscribe();
   }
 }

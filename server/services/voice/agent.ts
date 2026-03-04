@@ -156,7 +156,7 @@ export class VoiceAgent {
 
         case 'EMIT_INTERRUPT':
           this.emit(socketId, 'voice:interrupt');
-          this.emit(socketId, 'voice:status', { text: 'Listening…' });
+          this.emit(socketId, 'voice:status', { text: 'Say your command…' });
           break;
 
         case 'ADD_TO_HISTORY': {

@@ -42,6 +42,7 @@ chromium-browser \
   --disable-sync \
   --disable-background-networking \
   --disable-translate \
+  --use-fake-ui-for-media-stream \
   --app=http://localhost:3001 &
 
 CHROME_PID=$!

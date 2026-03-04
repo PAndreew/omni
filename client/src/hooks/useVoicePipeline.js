@@ -107,7 +107,7 @@ export function useVoicePipeline() {
             ttsActiveRef.current = false;
             // Tell server TTS has actually finished playing — server uses this to start listen timeout
             getSocket().emit('voice:tts_played');
-          }, 400);
+          }, 150);
           setStreamingText('');
         }
       }, 100);
@@ -117,7 +117,7 @@ export function useVoicePipeline() {
       stopAudio();
       ttsActiveRef.current = false;
       setStreamingText('');
-      setState('listening');
+      setState('awake');
     };
 
     socket.on('voice:transcript',  onTranscript);
