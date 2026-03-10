@@ -11,13 +11,31 @@ export function useVoicePipeline() {
   const [streamingText, setStreamingText] = useState('');
   const [transcript,    setTranscript]    = useState('');
 
-  const recorderRef   = useRef(null);
-  const streamRef     = useRef(null);
-  const audioCtxRef   = useRef(null);
-  const audioQueue    = useRef([]);
-  const isPlayingRef  = useRef(false);
-  const sourceRef     = useRef(null);   // current AudioBufferSourceNode
-  const ttsActiveRef  = useRef(false);  // true while TTS is playing — mute mic to prevent echo
+  const recorderRef     = useRef(null);
+  const streamRef       = useRef(null);
+  const audioCtxRef     = useRef(null);
+  const audioQueue      = useRef([]);
+  const isPlayingRef    = useRef(false);
+  const sourceRef       = useRef(null);   // current AudioBufferSourceNode
+  const ttsActiveRef    = useRef(false);  // true while TTS is playing — mute mic to prevent echo
+  const captureCtxRef   = useRef(null);
+  const micSourceRef    = useRef(null);
+  const workletNodeRef  = useRef(null);
+  const usePcmModeRef   = useRef(false);
+
+  const shouldUsePcm = useCallback(() => {
+    try {
+      const forced = localStorage.getItem('omni:voice:pcm');
+      if (forced === '1') return true;
+      if (forced === '0') return false;
+    } catch {}
+
+    const ua = navigator.userAgent || '';
+    const isChromium = /Chrome\/|Chromium\//.test(ua) && !/Edg\//.test(ua);
+    const isCoarsePointer = window.matchMedia?.('(pointer: coarse)')?.matches ?? false;
+    // Keep mobile path unchanged; use PCM on kiosk-like Chromium clients.
+    return isChromium && !isCoarsePointer;
+  }, []);
 
   // ── TTS Playback via Web Audio API ────────────────────────────────────────
 
@@ -150,30 +168,50 @@ export function useVoicePipeline() {
         audio: { channelCount: 1, echoCancellation: true, sampleRate: 48000 },
       });
       streamRef.current = stream;
-
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm'
-        : 'audio/mp4';
-
-      const recorder = new MediaRecorder(stream, {
-        mimeType,
-        audioBitsPerSecond: 32000,
-      });
-      recorderRef.current = recorder;
+      usePcmModeRef.current = shouldUsePcm();
 
       const socket = getSocket();
-      socket.emit('voice:start');
 
-      recorder.ondataavailable = async (e) => {
-        if (e.data.size === 0) return;
-        if (ttsActiveRef.current) return;  // don't send mic audio while TTS is playing (echo prevention)
-        const buf = await e.data.arrayBuffer();
-        socket.emit('voice:audio', buf);
-      };
+      if (usePcmModeRef.current && typeof AudioWorkletNode !== 'undefined') {
+        const captureCtx = new AudioContext({ sampleRate: 48000 });
+        await captureCtx.audioWorklet.addModule('/audio-processor.js');
 
-      recorder.start(250); // 250ms timeslices
+        const source = captureCtx.createMediaStreamSource(stream);
+        const worklet = new AudioWorkletNode(captureCtx, 'pcm-processor');
+        source.connect(worklet);
+
+        worklet.port.onmessage = (evt) => {
+          if (ttsActiveRef.current) return;
+          if (evt?.data) socket.emit('voice:audio', evt.data);
+        };
+
+        captureCtxRef.current = captureCtx;
+        micSourceRef.current = source;
+        workletNodeRef.current = worklet;
+        socket.emit('voice:start', { encoding: 'linear16', sampleRate: captureCtx.sampleRate });
+      } else {
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : 'audio/mp4';
+
+        const recorder = new MediaRecorder(stream, {
+          mimeType,
+          audioBitsPerSecond: 32000,
+        });
+        recorderRef.current = recorder;
+        socket.emit('voice:start', { encoding: 'auto' });
+
+        recorder.ondataavailable = async (e) => {
+          if (e.data.size === 0) return;
+          if (ttsActiveRef.current) return;  // don't send mic audio while TTS is playing (echo prevention)
+          const buf = await e.data.arrayBuffer();
+          socket.emit('voice:audio', buf);
+        };
+
+        recorder.start(250); // 250ms timeslices
+      }
       setActive(true);
       setState('listening');
       return true;
@@ -181,7 +219,7 @@ export function useVoicePipeline() {
       console.error('[VoicePipeline] Failed to start mic:', err);
       return false;
     }
-  }, [active]);
+  }, [active, shouldUsePcm]);
 
   // ── Mic stop ──────────────────────────────────────────────────────────────
 
@@ -189,6 +227,15 @@ export function useVoicePipeline() {
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== 'inactive') recorder.stop();
     recorderRef.current = null;
+
+    try { workletNodeRef.current?.disconnect(); } catch {}
+    try { micSourceRef.current?.disconnect(); } catch {}
+    workletNodeRef.current = null;
+    micSourceRef.current = null;
+    if (captureCtxRef.current && captureCtxRef.current.state !== 'closed') {
+      captureCtxRef.current.close().catch(() => {});
+    }
+    captureCtxRef.current = null;
 
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;

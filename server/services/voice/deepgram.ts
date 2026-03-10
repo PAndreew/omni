@@ -13,6 +13,11 @@ export interface DeepgramCallbacks {
   onClose: () => void;
 }
 
+export interface DeepgramSessionOptions {
+  encoding?: 'auto' | 'linear16';
+  sampleRate?: number;
+}
+
 export class DeepgramService {
   private client: ReturnType<typeof createClient>;
 
@@ -20,8 +25,8 @@ export class DeepgramService {
     this.client = createClient(apiKey);
   }
 
-  openLiveSession(callbacks: DeepgramCallbacks): LiveClient {
-    const live = this.client.listen.live({
+  openLiveSession(callbacks: DeepgramCallbacks, options: DeepgramSessionOptions = {}): LiveClient {
+    const cfg: any = {
       model: 'nova-2',
       language: 'multi',
       interim_results: true,
@@ -29,7 +34,17 @@ export class DeepgramService {
       utterance_end_ms: 1000,
       vad_events: true,
       smart_format: true,
-    });
+    };
+
+    // Mobile Safari currently works with containerized chunks (auto detect).
+    // Kiosk Chromium can explicitly send raw PCM for more reliable live STT.
+    if (options.encoding === 'linear16') {
+      cfg.encoding = 'linear16';
+      cfg.sample_rate = options.sampleRate || 48000;
+      cfg.channels = 1;
+    }
+
+    const live = this.client.listen.live(cfg);
 
     live.on(LiveTranscriptionEvents.Open, () => {
       console.log('[Deepgram] WebSocket open');

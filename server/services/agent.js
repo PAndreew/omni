@@ -299,6 +299,28 @@ RULES:
 }
 
 /**
+ * Recreate general session without aborting (call after tool execution to clear corrupted history).
+ */
+async function recreateFreshSession() {
+  if (!_kimiModel || !_authStorage || !_modelRegistry || !_loader) return;
+  try {
+    const result = await createAgentSession({
+      sessionManager: SessionManager.inMemory(),
+      authStorage: _authStorage,
+      modelRegistry: _modelRegistry,
+      resourceLoader: _loader,
+      customTools: omniTools,
+      tools: [],
+      model: _kimiModel,
+    });
+    session = result.session;
+    console.log('[Agent] General session refreshed after tool call.');
+  } catch (err) {
+    console.error('[Agent] Session refresh error:', err.message);
+  }
+}
+
+/**
  * Abort current general session turn and recreate (keeps future prompts working).
  */
 export async function abortAndRecreateSession() {
@@ -377,7 +399,7 @@ export async function processVoiceCommand(text) {
  * @param {string}   text  - User's voice command
  * @param {Function} emit  - (event, data) => void
  */
-export async function processVoiceCommandSocket(text, emit, complex = false, onAbortReady = null) {
+export async function processVoiceCommandSocket(text, emit, complex = false, onAbortReady = null, history = []) {
   const activeSession = (complex && complexSession) ? complexSession : session;
   if (!activeSession) {
     emit('agent:done', { text: "I'm sorry, my brain isn't fully loaded yet." });
@@ -390,41 +412,50 @@ export async function processVoiceCommandSocket(text, emit, complex = false, onA
   });
 
   emit('agent:status', { text: 'Thinking…' });
+
+  // Inject recent conversation history as context (pi agent session is recreated after tool calls)
+  let promptText = text;
+  if (!complex && history.length > 0) {
+    const ctx = history.slice(-6)
+      .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+      .join('\n');
+    promptText = `[Recent conversation:\n${ctx}]\n\nUser: ${text}`;
+  }
   console.log(`[Agent] Prompting session (${complex ? 'sonnet' : 'kimi'}): "${text}"`);
 
   let reply = '';
-  let toolName = '';
+  const pendingTools = [];
+
   const unsubscribe = activeSession.subscribe((event) => {
     if (event.type === 'message_update') {
       const ev = event.assistantMessageEvent;
-      console.log(`[Agent] message_update ev.type=${ev?.type} keys=${Object.keys(ev||{}).join(',')}`);
       if (ev.type === 'text_delta') {
         reply += ev.delta;
       } else if (ev.type === 'toolcall_start') {
-        toolName = ev.partial?.name || ev.partial?.function?.name || 'tool';
-        emit('agent:status', { text: `Using ${toolName}…` });
-      } else if (ev.type === 'toolcall_end') {
-        // customTools are NOT executed by pi agent — run them ourselves
-        const tc = ev.toolCall;
-        const name = tc?.name;
-        const args = tc?.arguments || {};
-        const tool = omniTools.find(t => t.name === name);
-        if (tool) {
-          tool.execute('manual', args).then(result => {
-            const text = result?.content?.[0]?.text;
-            console.log(`[Agent] Tool executed: ${name} → ${text?.slice(0, 80)}`);
-            if (!reply) reply = text || 'Done.';
-          }).catch(e => console.error(`[Agent] Tool error (${name}):`, e.message));
-        } else {
-          console.warn(`[Agent] Unknown tool: ${name}`);
+        const name = ev.partial?.name || 'tool';
+        emit('agent:status', { text: `Using ${name}…` });
+      }
+    } else if (event.type === 'message_end') {
+      // customTools aren't executed by pi agent — intercept from message_end and run ourselves
+      const msg = event.message;
+      if (msg?.role === 'assistant' && Array.isArray(msg.content)) {
+        for (const item of msg.content) {
+          if (item.type === 'toolCall' && item.name && item.arguments) {
+            const tool = omniTools?.find(t => t.name === item.name);
+            if (tool) {
+              console.log(`[Agent] Executing tool: ${item.name} args=${JSON.stringify(item.arguments).slice(0,100)}`);
+              const p = tool.execute('manual', item.arguments).then(result => {
+                const txt = result?.content?.[0]?.text;
+                console.log(`[Agent] Tool done: ${item.name} → ${txt?.slice(0, 80)}`);
+                if (!reply) reply = txt || '';
+              }).catch(e => console.error(`[Agent] Tool error (${item.name}):`, e.message));
+              pendingTools.push(p);
+            } else {
+              console.warn(`[Agent] Unknown tool: ${item.name}`);
+            }
+          }
         }
       }
-    } else if (event.type === 'turn_end') {
-      console.log(`[Agent] turn_end toolResults: ${JSON.stringify(event.toolResults).slice(0, 500)}`);
-    } else if (event.type === 'message_end') {
-      console.log(`[Agent] message_end: ${JSON.stringify(event.message).slice(0, 400)}`);
-    } else {
-      console.log(`[Agent] Event: ${event.type} keys=${Object.keys(event).join(',')}`);
     }
   });
 
@@ -438,8 +469,15 @@ export async function processVoiceCommandSocket(text, emit, complex = false, onA
   }, 25000);
 
   try {
-    await activeSession.prompt(text);
+    await activeSession.prompt(promptText);
     await activeSession.agent.waitForIdle();
+    // Wait for any custom tool executions to complete
+    if (pendingTools.length) {
+      await Promise.allSettled(pendingTools);
+      // Session history is now corrupted (tool call with no result injected back).
+      // Recreate fresh so follow-up prompts don't re-trigger the same tool.
+      if (!complex) recreateFreshSession().catch(() => {});
+    }
     settled = true;
     console.log(`[Agent] Done. Reply length: ${reply.length}`);
     emit('agent:done', { text: reply || "Done." });

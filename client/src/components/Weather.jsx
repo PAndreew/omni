@@ -28,10 +28,10 @@ export default function Weather({ focused }) {
   useEffect(() => {
     fetch('/api/weather')
       .then(r => r.json())
-      .then(setWeather)
+      .then(d => { if (d?.error || !d?.condition) setError('Unavailable'); else setWeather(d); })
       .catch(() => setError('Unavailable'));
     const id = setInterval(() => {
-      fetch('/api/weather').then(r => r.json()).then(setWeather).catch(() => {});
+      fetch('/api/weather').then(r => r.json()).then(d => { if (d?.condition) setWeather(d); }).catch(() => {});
     }, 10 * 60 * 1000);
     return () => clearInterval(id);
   }, []);

@@ -14,6 +14,8 @@ export interface VoiceSession {
   state: VoiceStateId;
   history: ConversationMessage[];
   deepgramLiveClient: any;
+  dgEncoding?: 'auto' | 'linear16';
+  dgSampleRate?: number;
   ttsAbortController: AbortController | null;
   llmAbortController: AbortController | null;
   ttsActive: boolean; // true once TTS audio chunks are being sent
@@ -22,7 +24,7 @@ export interface VoiceSession {
 // ─── Events (from external sources → state machine) ─────────────────────────
 
 export type VoiceEvent =
-  | { type: 'AUDIO_START';        socketId: string }
+  | { type: 'AUDIO_START';        socketId: string; encoding?: 'auto' | 'linear16'; sampleRate?: number }
   | { type: 'AUDIO_CHUNK';        socketId: string; chunk: Buffer }
   | { type: 'AUDIO_STOP';         socketId: string }
   | { type: 'TRANSCRIPT_FINAL';   socketId: string; text: string }

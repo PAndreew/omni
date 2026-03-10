@@ -40,7 +40,7 @@ export class VoiceAgent {
     // Handle AUDIO_START: create session
     if (event.type === 'AUDIO_START') {
       if (this.sessions.has(socketId)) return; // already active
-      this.createSession(socketId);
+      this.createSession(socketId, event.encoding, event.sampleRate);
       return;
     }
 
@@ -64,12 +64,18 @@ export class VoiceAgent {
 
   // ── Session lifecycle ──────────────────────────────────────────────────────
 
-  private createSession(socketId: string): void {
+  private createSession(
+    socketId: string,
+    encoding: 'auto' | 'linear16' = 'auto',
+    sampleRate?: number,
+  ): void {
     const session: VoiceSession = {
       socketId,
       state: 'IDLE',
       history: [],
       deepgramLiveClient: null,
+      dgEncoding: encoding,
+      dgSampleRate: sampleRate,
       ttsAbortController: null,
       llmAbortController: null,
       ttsActive: false,
@@ -91,12 +97,12 @@ export class VoiceAgent {
       onClose: () => {
         console.log(`[VoiceAgent] Deepgram closed for ${socketId}`);
       },
-    });
+    }, { encoding, sampleRate });
 
     // Update session with live client and set state to LISTENING
     const updated = { ...session, deepgramLiveClient: live, state: 'LISTENING' as const };
     this.sessions.set(socketId, updated);
-    console.log(`[VoiceAgent] Session created for ${socketId}`);
+    console.log(`[VoiceAgent] Session created for ${socketId} (DG=${encoding}${sampleRate ? ` @${sampleRate}` : ''})`);
     this.emit(socketId, 'voice:status', { text: 'Listening…' });
   }
 
@@ -140,7 +146,6 @@ export class VoiceAgent {
         case 'GREET_USER':
           this.emit(socketId, 'voice:awake');
           this.emit(socketId, 'voice:status', { text: 'Say your command…' });
-          this.launchGreetingTTS(socketId);
           break;
 
         case 'START_WAKE_TIMEOUT':
@@ -286,6 +291,9 @@ export class VoiceAgent {
     console.log(`[VoiceAgent] → pi agent (${complex ? 'sonnet' : 'kimi'}): "${text}"`);
     this.emit(socketId, 'voice:status', { text: 'On it…' });
 
+    const session = this.sessions.get(socketId);
+    const history = session?.history ?? [];
+
     processVoiceCommandSocket(text, (event: string, data: any) => {
       if (event === 'agent:status') {
         this.emit(socketId, 'voice:status', { text: data.text });
@@ -298,7 +306,7 @@ export class VoiceAgent {
       }
     }, complex, (abortFn: () => void) => {
       this.piAbortFns.set(socketId, abortFn);
-    }).catch((err: any) => {
+    }, history).catch((err: any) => {
       console.error('[VoiceAgent] Pi agent error:', err);
       this.dispatch({ type: 'LLM_DONE', socketId, text: 'The agent encountered an error.' });
     });

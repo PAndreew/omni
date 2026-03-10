@@ -29,6 +29,7 @@ mkdir -p "$KIOSK_PROFILE"
 chromium-browser \
   --ozone-platform=x11 \
   --kiosk \
+  --background-color=000000 \
   --noerrdialogs \
   --disable-infobars \
   --disable-session-crashed-bubble \

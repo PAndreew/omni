@@ -7,12 +7,13 @@ export function useNotifications() {
     }
   }, []);
 
-  const notify = useCallback(({ title, body, icon = '🖥️', urgent = false }) => {
+  const notify = useCallback(({ title, body, icon, urgent = false }) => {
     if ('Notification' in window && Notification.permission === 'granted') {
+      const safeIcon = typeof icon === 'string' && /^(\/|https?:\/\/)/.test(icon) ? icon : '/logo.svg';
       new Notification(title, {
         body,
-        icon: '/favicon.ico',
-        badge: '/favicon.ico',
+        icon: safeIcon,
+        badge: '/logo.svg',
         tag: urgent ? 'urgent' : 'info',
         requireInteraction: urgent,
       });

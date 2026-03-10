@@ -18,9 +18,11 @@ export function setupVoice(io: SocketIOServer): void {
   const agent = new VoiceAgent(io, dg, chirp);
 
   io.on('connection', (socket) => {
-    socket.on('voice:start', () => {
-      console.log(`[Voice] voice:start from ${socket.id}`);
-      agent.dispatch({ type: 'AUDIO_START', socketId: socket.id });
+    socket.on('voice:start', (payload?: { encoding?: 'auto' | 'linear16'; sampleRate?: number }) => {
+      const encoding = payload?.encoding === 'linear16' ? 'linear16' : 'auto';
+      const sampleRate = Number.isFinite(payload?.sampleRate) ? Number(payload?.sampleRate) : undefined;
+      console.log(`[Voice] voice:start from ${socket.id} (encoding=${encoding}${sampleRate ? ` sampleRate=${sampleRate}` : ''})`);
+      agent.dispatch({ type: 'AUDIO_START', socketId: socket.id, encoding, sampleRate });
     });
 
     socket.on('voice:audio', (chunk: ArrayBuffer | Buffer) => {

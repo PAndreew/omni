@@ -3,13 +3,22 @@
 
 import type { VoiceSession, VoiceEvent, VoiceAction } from './types.js';
 
-const WAKE_WORDS  = ['omni', 'hey omni', 'hé omni', 'hej omni'];
+const WAKE_WORDS  = ['omni', 'hey omni', 'hé omni', 'hej omni', 'hi omni', 'ok omni', 'okay omni'];
 const STOP_WORDS  = ['stop', 'cancel', 'pause', 'halt', 'abort', 'never mind', 'forget it'];
 const RESUME_WORDS = ['resume', 'continue session', 'open session', 'go back'];
 
 function isWakeWord(text: string): boolean {
   const t = text.toLowerCase().trim().replace(/[.,!?]/g, '');
-  return WAKE_WORDS.some(w => t === w || t.endsWith(w));
+  return WAKE_WORDS.some(w => t === w || t.endsWith(w) || t.startsWith(`${w} `));
+}
+
+function extractWakeCommand(text: string): string {
+  const t = text.toLowerCase().trim().replace(/[.,!?]/g, '');
+  for (const w of WAKE_WORDS) {
+    if (t === w) return '';
+    if (t.startsWith(`${w} `)) return t.slice(w.length).trim();
+  }
+  return '';
 }
 
 function isStopCommand(text: string): boolean {
@@ -46,9 +55,20 @@ export function processEvent(
     case 'TRANSCRIPT_FINAL':
       if (session.state === 'LISTENING') {
         if (isWakeWord(event.text)) {
-          // Wake word detected → greet; wake timeout starts after greeting finishes playing
-          nextState = 'AWAKE';
-          actions.push({ type: 'GREET_USER' });
+          const cmd = extractWakeCommand(event.text);
+          if (cmd.length > 0) {
+            // One-shot utterance, e.g. "hey omni what's the weather"
+            nextState = 'RESPONDING';
+            actions.push({ type: 'EMIT_TRANSCRIPT', text: cmd, isFinal: true });
+            actions.push({ type: 'ADD_TO_HISTORY', role: 'user', text: cmd });
+            actions.push({ type: 'START_THINKING_TIMEOUT' });
+            actions.push({ type: 'START_LLM', text: cmd });
+          } else {
+            // Wake word only → wait for the next utterance
+            nextState = 'AWAKE';
+            actions.push({ type: 'GREET_USER' });
+            actions.push({ type: 'START_WAKE_TIMEOUT' });
+          }
         }
         // Non-wake-word speech while in LISTENING is silently ignored
       } else if (session.state === 'AWAKE') {
