@@ -53,10 +53,10 @@ export default function Weather({ focused }) {
       <p className="title">{weather.city} · Weather</p>
 
       <div className="weather-main">
-        <WeatherIcon code={weather.condition.icon} size={52} />
+        <WeatherIcon code={weather.condition?.icon} size={52} />
         <div>
           <div className="weather-temp">{weather.temp}°</div>
-          <div className="weather-label">{weather.condition.label}</div>
+          <div className="weather-label">{weather.condition?.label}</div>
           <div className="weather-meta">
             Feels {weather.feels_like}° · {weather.humidity}% humidity · {weather.wind} km/h
           </div>
@@ -67,7 +67,7 @@ export default function Weather({ focused }) {
         {weather.forecast.map((day, i) => (
           <div key={i} className="glass forecast-day">
             <div className="forecast-date">{new Date(day.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</div>
-            <WeatherIcon code={day.condition.icon} size={18} />
+            <WeatherIcon code={day.condition?.icon} size={18} />
             <div className="forecast-range">
               <span style={{ color: 'var(--text)' }}>{day.high}°</span>
               <span style={{ color: 'var(--text-dim)' }}>{day.low}°</span>

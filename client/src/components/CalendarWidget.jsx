@@ -4,20 +4,47 @@ import { useSocket } from '../hooks/useSocket.js';
 
 export default function CalendarWidget({ focused }) {
   const [events, setEvents] = useState([]);
-  const [month, setMonth] = useState(new Date());
-  const [selectedDay, setSelectedDay] = useState(new Date());
+  const [month, setMonth] = useState(() => new Date());
+  const [selectedDay, setSelectedDay] = useState(() => new Date());
+
+  const jumpToToday = () => {
+    const today = new Date();
+    setMonth(today);
+    setSelectedDay(today);
+  };
 
   const loadEvents = () =>
-    fetch('/api/events').then(r => r.json()).then(setEvents).catch(() => {});
+    fetch('/api/events').then((r) => r.json()).then(setEvents).catch(() => {});
 
-  useEffect(() => { loadEvents(); }, []);
+  useEffect(() => {
+    loadEvents();
+    jumpToToday();
+  }, []);
 
-  useSocket('event:added',    (e) => setEvents(prev => [...prev, e].sort((a, b) => a.start_time.localeCompare(b.start_time))));
-  useSocket('event:deleted',  ({ id }) => setEvents(prev => prev.filter(e => e.id !== id)));
+  useEffect(() => {
+    let intervalId;
+
+    const now = new Date();
+    const nextMidnight = new Date(now);
+    nextMidnight.setHours(24, 0, 0, 0);
+
+    const timeoutId = window.setTimeout(() => {
+      jumpToToday();
+      intervalId = window.setInterval(jumpToToday, 24 * 60 * 60 * 1000);
+    }, nextMidnight.getTime() - now.getTime());
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (intervalId) window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useSocket('event:added', (e) => setEvents((prev) => [...prev, e].sort((a, b) => a.start_time.localeCompare(b.start_time))));
+  useSocket('event:deleted', ({ id }) => setEvents((prev) => prev.filter((e) => e.id !== id)));
   useSocket('calendar:synced', loadEvents);
 
   const days = eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) });
-  const startOffset = getDay(startOfMonth(month)); // 0=Sun
+  const startOffset = getDay(startOfMonth(month));
 
   const eventsByDay = {};
   for (const ev of events) {
@@ -35,29 +62,28 @@ export default function CalendarWidget({ focused }) {
       <div className="cal-header tile-header">
         <p className="title">Calendar</p>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="btn" style={{ padding: '4px 8px', fontSize: 11 }}
-            onClick={() => { const t = new Date(); setMonth(t); setSelectedDay(t); }}>Today</button>
-          <button className="btn" style={{ padding: '4px 10px' }}
-            onClick={() => setMonth(m => new Date(m.getFullYear(), m.getMonth() - 1))}>‹</button>
+          <button className="btn" style={{ padding: '4px 8px', fontSize: 11 }} onClick={jumpToToday}>Today</button>
+          <button className="btn" style={{ padding: '4px 10px' }} onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1))}>‹</button>
           <span className="cal-month-label">{format(month, 'MMM yyyy')}</span>
-          <button className="btn" style={{ padding: '4px 10px' }}
-            onClick={() => setMonth(m => new Date(m.getFullYear(), m.getMonth() + 1))}>›</button>
+          <button className="btn" style={{ padding: '4px 10px' }} onClick={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1))}>›</button>
         </div>
       </div>
 
       <div className="cal-grid">
-        {['S','M','T','W','T','F','S'].map((d, i) => (
+        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
           <div key={i} className="cal-dow">{d}</div>
         ))}
         {Array.from({ length: startOffset }).map((_, i) => <div key={`e${i}`} />)}
-        {days.map(day => {
+        {days.map((day) => {
           const key = format(day, 'yyyy-MM-dd');
           const dayEvents = eventsByDay[key] || [];
           const isSelected = isSameDay(day, selectedDay);
           return (
-            <div key={key}
+            <div
+              key={key}
               className={`cal-day ${isToday(day) ? 'today' : ''} ${dayEvents.length ? 'has-events' : ''} ${isSelected ? 'selected' : ''}`}
-              onClick={() => setSelectedDay(day)}>
+              onClick={() => setSelectedDay(day)}
+            >
               <span>{format(day, 'd')}</span>
               {dayEvents.length > 0 && (
                 <div className="cal-dots">
@@ -77,7 +103,7 @@ export default function CalendarWidget({ focused }) {
           {selectedEvents.length > 0 && <span style={{ color: 'var(--silver-light)', marginLeft: 6 }}>{selectedEvents.length}</span>}
         </div>
         <div className="cal-events-list">
-          {selectedEvents.length > 0 ? selectedEvents.map(ev => (
+          {selectedEvents.length > 0 ? selectedEvents.map((ev) => (
             <div key={ev.id} className="glass cal-event">
               <span className="cal-event-dot" style={{ background: ev.color || 'var(--silver)' }} />
               <span className="cal-event-title">{ev.title}</span>

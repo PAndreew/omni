@@ -8,30 +8,27 @@ import ChoreList from './components/ChoreList.jsx';
 import NowPlaying from './components/NowPlaying.jsx';
 import RssWidget from './components/RssWidget.jsx';
 import CalendarWidget from './components/CalendarWidget.jsx';
-import VoiceAssistant from './components/VoiceAssistant.jsx';
-import TerminalWidget from './components/TerminalWidget.jsx';
 import NotificationManager from './components/Notifications.jsx';
 import SettingsPanel from './components/SettingsPanel.jsx';
 import GamesMenu from './components/GamesMenu.jsx';
 import ZatackaStage from './components/games/ZatackaStage.jsx';
 import { useSocket, getSocket } from './hooks/useSocket.js';
 
-const TILES = ['clock', 'weather', 'nowplaying', 'chores', 'calendar', 'rss', 'voice', 'terminal'];
+const TILES = ['clock', 'weather', 'nowplaying', 'chores', 'calendar', 'rss'];
 
 export default function App() {
-  const [focusIdx, setFocusIdx]       = useState(0);
-  const cecKeyboardOpen               = useCecKeyboardOpen();
-  const [adminMode, setAdminMode]     = useState(false);
-  const [adminPwd, setAdminPwd]       = useState('');
-  const [showLogin, setShowLogin]     = useState(false);
+  const [focusIdx, setFocusIdx] = useState(0);
+  const cecKeyboardOpen = useCecKeyboardOpen();
+  const [adminMode, setAdminMode] = useState(false);
+  const [adminPwd, setAdminPwd] = useState('');
+  const [showLogin, setShowLogin] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [spotifyTab, setSpotifyTab]     = useState(false);
-  const [widgetMode, setWidgetMode]     = useState(false);
-  const [showGames, setShowGames]       = useState(false);
-  const [activeGame, setActiveGame]     = useState(null);
+  const [spotifyTab, setSpotifyTab] = useState(false);
+  const [widgetMode, setWidgetMode] = useState(false);
+  const [showGames, setShowGames] = useState(false);
+  const [activeGame, setActiveGame] = useState(null);
   const [activeGameConfig, setActiveGameConfig] = useState(null);
 
-  // Open settings on Spotify OAuth callback redirect
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('spotify') === 'connected') {
@@ -42,21 +39,19 @@ export default function App() {
     }
   }, []);
 
-  // D-pad / CEC navigation
   const navigate = useCallback((dir) => {
-    setFocusIdx(prev => {
+    setFocusIdx((prev) => {
       // Sidebar indices: -1 (Games), -2 (Remote), -3 (Settings)
       if (dir === 'left') {
         if (prev === 0) return -1;
         if (prev === 3) return -2;
-        if (prev === 6) return -3;
         if (prev < 0) return prev;
         return Math.max(prev - 1, 0);
       }
       if (dir === 'right') {
         if (prev === -1) return 0;
         if (prev === -2) return 3;
-        if (prev === -3) return 6;
+        if (prev === -3) return 5;
         if (prev < 0) return prev;
         return Math.min(prev + 1, TILES.length - 1);
       }
@@ -64,43 +59,38 @@ export default function App() {
         if (prev === -1) return -1;
         if (prev === -2) return -1;
         if (prev === -3) return -2;
-        if (prev === 6) return 3;
-        if (prev === 7) return 5;
-        return Math.max(prev - 3, 0);
+        if (prev >= 3) return prev - 3;
+        return prev;
       }
       if (dir === 'down') {
         if (prev === -1) return -2;
         if (prev === -2) return -3;
         if (prev === -3) return -3;
-        if (prev >= 6) return prev;
-        if (prev <= 2) return prev === 0 ? 6 : 7;
-        const bottomTarget = prev === 3 ? 6 : 7;
-        return Math.min(bottomTarget, TILES.length - 1);
+        if (prev <= 2) return prev + 3;
+        return prev;
       }
       return prev;
     });
   }, []);
 
   const getFocusables = useCallback(() => {
-    // If a modal is open, focus only within it
     const modal = document.querySelector('.modal, .settings-panel, .games-panel');
     if (modal) {
       return Array.from(
         modal.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href], textarea, select, [tabindex="0"]')
-      ).filter(el => {
+      ).filter((el) => {
         const style = window.getComputedStyle(el);
         if (style.display === 'none' || style.visibility === 'hidden') return false;
         return true;
       });
     }
 
-    // Otherwise, if in widget mode, focus within the tile
     if (widgetMode) {
       const tile = document.querySelector(`[data-tile="${TILES[focusIdx]}"]`);
       if (!tile) return [];
       return Array.from(
         tile.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href], textarea, select, [tabindex="0"]')
-      ).filter(el => {
+      ).filter((el) => {
         const style = window.getComputedStyle(el);
         if (style.display === 'none' || style.visibility === 'hidden') return false;
         return true;
@@ -113,7 +103,10 @@ export default function App() {
     setWidgetMode(true);
     setTimeout(() => {
       const els = getFocusables();
-      if (els.length) { els[0].focus(); els[0].scrollIntoView({ block: 'nearest' }); }
+      if (els.length) {
+        els[0].focus();
+        els[0].scrollIntoView({ block: 'nearest' });
+      }
     }, 60);
   }, [getFocusables]);
 
@@ -125,7 +118,7 @@ export default function App() {
   const widgetStep = useCallback((dir) => {
     const els = getFocusables();
     if (!els.length) return;
-    const cur  = els.indexOf(document.activeElement);
+    const cur = els.indexOf(document.activeElement);
     const next = dir === 'next'
       ? Math.min(cur < 0 ? 0 : cur + 1, els.length - 1)
       : Math.max(cur <= 0 ? 0 : cur - 1, 0);
@@ -143,14 +136,12 @@ export default function App() {
     }
   }, []);
 
+  const modalActive = showLogin || showSettings || showGames;
+
   useEffect(() => {
     const handler = (e) => {
-      const map = { ArrowRight:'right', ArrowLeft:'left', ArrowDown:'down', ArrowUp:'up' };
+      const map = { ArrowRight: 'right', ArrowLeft: 'left', ArrowDown: 'down', ArrowUp: 'up' };
       if (map[e.key]) {
-        // Don't intercept arrow keys if we are typing in a terminal
-        const isTerm = document.activeElement?.dataset?.termSessionId || document.activeElement?.classList.contains('xterm-helper-textarea');
-        if (isTerm) return;
-
         e.preventDefault();
         if (!widgetMode && !modalActive) {
           navigate(map[e.key]);
@@ -163,29 +154,34 @@ export default function App() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [navigate, widgetMode, exitWidget]);
+  }, [navigate, widgetMode, modalActive, widgetStep, exitWidget]);
 
-  const modalActive = showLogin || showSettings || showGames;
-
-  useSocket('cec:right',  () => { 
-    console.log('[CEC] right', { cecKeyboardOpen, widgetMode, modalActive });
-    if (!cecKeyboardOpen) { if (modalActive || widgetMode) widgetStep('next'); else navigate('right'); } 
+  useSocket('cec:right', () => {
+    if (!cecKeyboardOpen) {
+      if (modalActive || widgetMode) widgetStep('next');
+      else navigate('right');
+    }
   });
-  useSocket('cec:left',   () => { 
-    console.log('[CEC] left', { cecKeyboardOpen, widgetMode, modalActive });
-    if (!cecKeyboardOpen) { if (modalActive || widgetMode) widgetStep('prev'); else navigate('left'); } 
+  useSocket('cec:left', () => {
+    if (!cecKeyboardOpen) {
+      if (modalActive || widgetMode) widgetStep('prev');
+      else navigate('left');
+    }
   });
-  useSocket('cec:down',   () => { 
-    console.log('[CEC] down', { cecKeyboardOpen, widgetMode, modalActive });
-    if (!cecKeyboardOpen) { if (modalActive || widgetMode) widgetStep('next'); else navigate('down'); } 
+  useSocket('cec:down', () => {
+    if (!cecKeyboardOpen) {
+      if (modalActive || widgetMode) widgetStep('next');
+      else navigate('down');
+    }
   });
-  useSocket('cec:up',     () => { 
-    console.log('[CEC] up', { cecKeyboardOpen, widgetMode, modalActive });
-    if (!cecKeyboardOpen) { if (modalActive || widgetMode) widgetStep('prev'); else navigate('up'); } 
+  useSocket('cec:up', () => {
+    if (!cecKeyboardOpen) {
+      if (modalActive || widgetMode) widgetStep('prev');
+      else navigate('up');
+    }
   });
-  useSocket('cec:select', () => { 
-    console.log('[CEC] select', { cecKeyboardOpen, widgetMode, focusIdx, modalActive });
-    if (!cecKeyboardOpen) { 
+  useSocket('cec:select', () => {
+    if (!cecKeyboardOpen) {
       if (modalActive || widgetMode) {
         widgetActivate();
       } else {
@@ -194,27 +190,26 @@ export default function App() {
         else if (focusIdx === -3) openAdmin();
         else enterWidget();
       }
-    } 
+    }
   });
-  useSocket('cec:back',   () => {
+  useSocket('cec:back', () => {
     if (showLogin) setShowLogin(false);
     else if (showSettings) setShowSettings(false);
     else if (widgetMode) exitWidget();
   });
 
-  // Remote text relay — route to focused input only (terminal uses its own on-screen keybar)
   useSocket('remote:type', (text) => {
     const el = document.activeElement;
-    if (!el || el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
-    const proto  = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return;
+    const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
     setter.call(el, el.value + text);
     el.dispatchEvent(new Event('input', { bubbles: true }));
   });
   useSocket('remote:backspace', () => {
     const el = document.activeElement;
-    if (!el || el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
-    const proto  = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+    if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA')) return;
+    const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
     setter.call(el, el.value.slice(0, -1));
     el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -226,11 +221,11 @@ export default function App() {
   });
 
   useGamepad({
-    onUp:      () => { if (!cecKeyboardOpen) navigate('up'); },
-    onDown:    () => { if (!cecKeyboardOpen) navigate('down'); },
-    onLeft:    () => { if (!cecKeyboardOpen) navigate('left'); },
-    onRight:   () => { if (!cecKeyboardOpen) navigate('right'); },
-    onSelect:  () => { if (!cecKeyboardOpen) getSocket().emit('cec:select'); },
+    onUp: () => { if (!cecKeyboardOpen) navigate('up'); },
+    onDown: () => { if (!cecKeyboardOpen) navigate('down'); },
+    onLeft: () => { if (!cecKeyboardOpen) navigate('left'); },
+    onRight: () => { if (!cecKeyboardOpen) navigate('right'); },
+    onSelect: () => { if (!cecKeyboardOpen) getSocket().emit('cec:select'); },
     onOptions: () => openAdmin(),
   });
 
@@ -240,14 +235,19 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: adminPwd }),
     });
-    if (res.ok) { setAdminMode(true); setShowLogin(false); setShowSettings(true); }
-    else alert('Wrong password');
+    if (res.ok) {
+      setAdminMode(true);
+      setShowLogin(false);
+      setShowSettings(true);
+    } else {
+      alert('Wrong password');
+    }
     setAdminPwd('');
   };
 
-  const openAdmin  = () => setShowLogin(true);
+  const openAdmin = () => setShowLogin(true);
   const openRemote = () => window.open('/remote', '_blank');
-  const toggleGames = () => setShowGames(prev => !prev);
+  const toggleGames = () => setShowGames((prev) => !prev);
   const launchGame = (gameId, config) => {
     setActiveGame(gameId);
     setActiveGameConfig(config);
@@ -258,7 +258,6 @@ export default function App() {
     setActiveGameConfig(null);
   };
 
-  // Auto-focus first element when modal opens
   useEffect(() => {
     if (modalActive) {
       setTimeout(() => {
@@ -285,16 +284,17 @@ export default function App() {
 
         <div className="app-grid">
           {TILES.map((name, idx) => (
-            <div key={name} data-tile={name}
-                 className={`grid-area-${name}${widgetMode && focusIdx === idx ? ' widget-active' : ''}`}>
-              {name === 'clock'      && <Clock            focused={focusIdx === 0} />}
-              {name === 'weather'    && <Weather          focused={focusIdx === 1} />}
-              {name === 'nowplaying' && <NowPlaying       focused={focusIdx === 2} />}
-              {name === 'chores'     && <ChoreList        focused={focusIdx === 3} />}
-              {name === 'calendar'   && <CalendarWidget   focused={focusIdx === 4} />}
-              {name === 'rss'        && <RssWidget        focused={focusIdx === 5} />}
-              {name === 'voice'      && <VoiceAssistant   focused={focusIdx === 6} />}
-              {name === 'terminal'   && <TerminalWidget    focused={focusIdx === 7} />}
+            <div
+              key={name}
+              data-tile={name}
+              className={`grid-area-${name}${widgetMode && focusIdx === idx ? ' widget-active' : ''}`}
+            >
+              {name === 'clock' && <Clock focused={focusIdx === 0} />}
+              {name === 'weather' && <Weather focused={focusIdx === 1} />}
+              {name === 'nowplaying' && <NowPlaying focused={focusIdx === 2} />}
+              {name === 'chores' && <ChoreList focused={focusIdx === 3} />}
+              {name === 'calendar' && <CalendarWidget focused={focusIdx === 4} />}
+              {name === 'rss' && <RssWidget focused={focusIdx === 5} />}
             </div>
           ))}
         </div>
@@ -302,15 +302,17 @@ export default function App() {
 
       {showLogin && (
         <div className="modal-backdrop" onClick={() => setShowLogin(false)}>
-          <div className="modal glass" onClick={e => e.stopPropagation()}>
-            <h2 style={{ marginBottom: 16, fontSize: 14, fontWeight: 500, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--silver-light)' }}>Admin Mode</h2>
+          <div className="modal glass" onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginBottom: 16, fontSize: 14, fontWeight: 500, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--silver-light)' }}>
+              Admin Mode
+            </h2>
             <input
               className="input"
               type="password"
               placeholder="Password"
               value={adminPwd}
-              onChange={e => setAdminPwd(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && login()}
+              onChange={(e) => setAdminPwd(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && login()}
               autoFocus
             />
             <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -321,8 +323,11 @@ export default function App() {
         </div>
       )}
 
-      <SettingsPanel open={showSettings} onClose={() => { setShowSettings(false); setSpotifyTab(false); }}
-                     initialTab={spotifyTab ? 'spotify' : null} />
+      <SettingsPanel
+        open={showSettings}
+        onClose={() => { setShowSettings(false); setSpotifyTab(false); }}
+        initialTab={spotifyTab ? 'spotify' : null}
+      />
       <GamesMenu open={showGames} onClose={() => setShowGames(false)} onLaunch={launchGame} />
       <ZatackaStage open={activeGame === 'zatacka'} config={activeGameConfig} onClose={closeGame} />
       <NotificationManager />
@@ -365,28 +370,29 @@ export default function App() {
         .game-stage-meta { display: grid; gap: 10px; font-size: 12px; color: var(--text-dim); }
 
         .app-grid {
-          flex: 1; display: grid;
+          flex: 1;
+          display: grid;
           grid-template-columns: 1fr 1.15fr 0.9fr;
-          grid-template-rows: 1fr 2.2fr minmax(60px, 0.4fr);
+          grid-template-rows: 1fr 2.4fr;
           grid-template-areas:
             "clock weather nowplaying"
-            "chores calendar rss"
-            "voice terminal terminal";
-          gap: 14px; padding: 14px; min-width: 0; min-height: 0;
+            "chores calendar rss";
+          gap: 14px;
+          padding: 14px;
+          min-width: 0;
+          min-height: 0;
         }
 
-        .grid-area-clock, .grid-area-weather, .grid-area-nowplaying, .grid-area-chores, .grid-area-calendar, .grid-area-rss, .grid-area-voice, .grid-area-terminal { min-height: 0; min-width: 0; overflow: hidden; }
-        .grid-area-clock      { grid-area: clock; }
-        .grid-area-weather    { grid-area: weather; }
+        .grid-area-clock, .grid-area-weather, .grid-area-nowplaying, .grid-area-chores, .grid-area-calendar, .grid-area-rss { min-height: 0; min-width: 0; overflow: hidden; }
+        .grid-area-clock { grid-area: clock; }
+        .grid-area-weather { grid-area: weather; }
         .grid-area-nowplaying { grid-area: nowplaying; }
-        .grid-area-chores     { grid-area: chores; }
-        .grid-area-calendar   { grid-area: calendar; }
-        .grid-area-rss        { grid-area: rss; }
-        .grid-area-voice      { grid-area: voice; }
-        .grid-area-terminal   { grid-area: terminal; }
+        .grid-area-chores { grid-area: chores; }
+        .grid-area-calendar { grid-area: calendar; }
+        .grid-area-rss { grid-area: rss; }
 
-        .grid-area-clock > *, .grid-area-weather > *, .grid-area-nowplaying > *, .grid-area-chores > *, .grid-area-calendar > *, .grid-area-rss > *, .grid-area-voice > *, .grid-area-terminal > * { height: 100%; }
-        .grid-area-voice .tile { padding: 14px 20px; }
+        .grid-area-chores, .grid-area-calendar, .grid-area-rss { align-self: stretch; }
+        .grid-area-clock > *, .grid-area-weather > *, .grid-area-nowplaying > *, .grid-area-chores > *, .grid-area-calendar > *, .grid-area-rss > * { height: 100%; }
 
         @media (max-width: 768px) {
           .shell { flex-direction: column; height: auto; min-height: 100vh; overflow-x: hidden; overflow-y: auto; }
@@ -398,7 +404,7 @@ export default function App() {
           .game-stage-body { grid-template-columns: 1fr; }
           .game-stage-canvas { height: 320px; }
           .app-grid { display: flex; flex-direction: column; height: auto; width: 100%; max-width: 100%; overflow-x: hidden; gap: 10px; padding: 10px; }
-          .grid-area-clock > *, .grid-area-weather > *, .grid-area-nowplaying > *, .grid-area-chores > *, .grid-area-calendar > *, .grid-area-rss > *, .grid-area-voice > *, .grid-area-terminal > * { height: auto; }
+          .grid-area-clock > *, .grid-area-weather > *, .grid-area-nowplaying > *, .grid-area-chores > *, .grid-area-calendar > *, .grid-area-rss > * { height: auto; }
           .clock-tile { flex-direction: row !important; align-items: center; gap: 12px; }
           .clock-date { margin-top: 0 !important; }
         }
@@ -406,7 +412,6 @@ export default function App() {
         .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 500; }
         .modal { padding: 28px; border-radius: 0; width: min(360px, calc(100vw - 32px)); }
 
-        /* Widget mode / Modals: show focus ring on whatever element is selected */
         .widget-active button:focus,
         .widget-active input:focus,
         .widget-active textarea:focus,
@@ -422,7 +427,7 @@ export default function App() {
           outline-offset: -2px;
           box-shadow: 0 0 15px rgba(255,255,255,0.1);
         }
-        /* Ensure delete buttons are visible when focused in widget mode */
+
         .widget-active .chore-delete:focus { opacity: 1 !important; color: var(--red); }
       `}</style>
     </>
