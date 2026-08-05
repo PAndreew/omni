@@ -20,10 +20,6 @@ import { startAudioBridge, getCurrentTrack, sendCommand } from './services/audio
 import { startScheduler } from './services/scheduler.js';
 import { startCalendarSync } from './services/calendar.js';
 import spotifyRouter from './routes/spotify.js';
-import { initAgent, processVoiceCommand, processVoiceCommandSocket } from './services/agent.js';
-import { runClaudeAgent, clearClaudeHistory } from './services/claudeAgent.js';
-import { startWhisper } from './services/whisper.js';
-import { setupVoice } from './services/voice/index.ts';
 import db from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -72,28 +68,12 @@ app.get('/api/audio/current', (req, res) => res.json(getCurrentTrack()));
 
 // Voice command endpoint — frontend sends parsed command text
 app.post('/api/voice/command', async (req, res) => {
-  const { text } = req.body;
-  console.log(`[Voice] Processing command: "${text}"`);
-  const reply = await processVoiceCommand(text?.toLowerCase() || '');
-  console.log(`[Voice] Agent reply: "${reply}"`);
-  io.emit('voice:reply', { text: reply });
-  res.json({ reply });
+  res.status(410).json({ error: 'Voice agent disabled' });
 });
 
 // Whisper transcription proxy — receives raw WAV, forwards to local whisper_server.py
 app.post('/api/voice/transcribe', express.raw({ type: 'audio/*', limit: '50mb' }), async (req, res) => {
-  try {
-    const mime = req.headers['content-type'] || 'audio/webm';
-    const ext  = mime.includes('mp4') ? '.mp4' : mime.includes('ogg') ? '.ogg' : mime.includes('wav') ? '.wav' : '.webm';
-    const lang = db.prepare("SELECT value FROM settings WHERE key='voice_language'").get()?.value || 'hu';
-    const form = new FormData();
-    form.append('file', new Blob([req.body], { type: mime }), `audio${ext}`);
-    form.append('language', lang);
-    const resp = await fetch('http://127.0.0.1:8765/inference', { method: 'POST', body: form });
-    res.json(await resp.json());
-  } catch (err) {
-    res.status(503).json({ error: 'Whisper unavailable', detail: err.message });
-  }
+  res.status(410).json({ error: 'Voice agent disabled' });
 });
 
 // Serve built frontend in production
@@ -106,19 +86,6 @@ app.get('*', (_req, res) => res.sendFile(path.join(clientDist, 'index.html')));
 
 // ─── Agent: pending voice-confirmation promises ──────────────────────────────
 // socketId → { resolve, reject, timer }
-const pendingAsks = {};
-
-function makeAskFn(socketId) {
-  return (sid, timeoutMs) =>
-    new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        delete pendingAsks[socketId];
-        reject(new Error('timeout'));
-      }, timeoutMs);
-      pendingAsks[socketId] = { resolve, reject, timer };
-    });
-}
-
 // ─── PTY session store ───────────────────────────────────────────────────────
 // Each entry: { proc, socketId, outputBuffer, inputDebounce, needsInput }
 // Sessions are NEVER auto-killed — they persist until the process exits naturally
@@ -255,27 +222,6 @@ io.on('connection', (socket) => {
   });
 
   // ── Agent: voice-driven AI commands ─────────────────────────────────────
-  socket.on('agent:command', async ({ text, agent }) => {
-    console.log(`[WS] agent:command agent=${agent} text="${text}"`);
-    const emit = (event, data) => socket.emit(event, data);
-    if (agent === 'claude') {
-      runClaudeAgent({ text, socketId: socket.id, emit, onAsk: makeAskFn(socket.id) });
-    } else {
-      // Pi agent (existing session-based agent)
-      processVoiceCommandSocket(text, emit);
-    }
-  });
-
-  socket.on('agent:respond', ({ text }) => {
-    const p = pendingAsks[socket.id];
-    if (p) { clearTimeout(p.timer); delete pendingAsks[socket.id]; p.resolve(text); }
-  });
-
-  socket.on('agent:cancel', () => {
-    const p = pendingAsks[socket.id];
-    if (p) { clearTimeout(p.timer); delete pendingAsks[socket.id]; p.reject(new Error('cancelled')); }
-  });
-
   // ── Terminal (PTY) sessions ──────────────────────────────────────────────
   socket.on('term:open', ({ id, cols, rows }) => {
     console.log(`[WS] term:open session=${id} cols=${cols} rows=${rows}`);
@@ -304,10 +250,6 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`[WS] Client disconnected: ${socket.id}`);
-    // Cancel any pending agent voice confirmation
-    const p = pendingAsks[socket.id];
-    if (p) { clearTimeout(p.timer); delete pendingAsks[socket.id]; p.reject(new Error('disconnected')); }
-    clearClaudeHistory(socket.id);
     // PTY sessions are NOT killed on disconnect — they run indefinitely until
     // the process exits or the user explicitly closes them.
   });
@@ -318,9 +260,6 @@ startCEC(io);
 startAudioBridge(io);
 startScheduler(io);
 startCalendarSync(io);
-initAgent(io);
-startWhisper();
-setupVoice(io);
 
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🖥️  OmniWall server running at http://0.0.0.0:${PORT}`);
@@ -328,4 +267,3 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`   Tailscale IP:   http://100.64.243.93:${PORT}`);
   console.log(`   Tailscale DNS:  http://raspberrypi.tailf0acdd.ts.net:${PORT}`);
 });
-

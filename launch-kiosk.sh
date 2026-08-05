@@ -6,13 +6,8 @@ export XAUTHORITY=/home/pi/.Xauthority
 export WAYLAND_DISPLAY=wayland-1
 export XDG_RUNTIME_DIR=/run/user/1000
 
-# Kill DSI-2 — app lives on the TV (HDMI-A-2) only.
-wlr-randr --output DSI-2 --off 2>/dev/null || true
-
-# Kill the panel and its respawner so it doesn't eat 68px of screen.
-pkill -f 'wfrespawn wf-panel-pi' 2>/dev/null || true
-pkill -f 'wf-panel-pi'           2>/dev/null || true
-sleep 1
+# Keep DSI-2 and the Raspberry Pi desktop/panel running. HDMI-A-1 is the
+# compositor's logical origin, so Chromium's kiosk opens on the TV.
 
 # Wait for OmniWall server (up to 30s)
 for i in $(seq 1 30); do
@@ -25,10 +20,12 @@ done
 KIOSK_PROFILE=/tmp/chromium-kiosk
 mkdir -p "$KIOSK_PROFILE"
 
-# Launch Chromium kiosk in background so we can fix the window position
+# Launch Chromium in kiosk mode on the logical-origin TV output.
 chromium-browser \
   --ozone-platform=x11 \
   --kiosk \
+  --window-position=0,0 \
+  --window-size=1920,1080 \
   --background-color=000000 \
   --noerrdialogs \
   --disable-infobars \
@@ -43,24 +40,10 @@ chromium-browser \
   --disable-sync \
   --disable-background-networking \
   --disable-translate \
+  --disable-notifications \
   --use-fake-ui-for-media-stream \
   --app=http://localhost:3001 &
 
 CHROME_PID=$!
-
-# Wait for the OmniWall window to appear, then force it to 0,0 full-screen.
-for i in $(seq 1 30); do
-  WIN=$(DISPLAY=:0 XAUTHORITY=/home/pi/.Xauthority \
-        xdotool search --name "OmniWall" 2>/dev/null | head -1)
-  [ -n "$WIN" ] && break
-  sleep 1
-done
-
-if [ -n "$WIN" ]; then
-  DISPLAY=:0 XAUTHORITY=/home/pi/.Xauthority xdotool \
-    windowfocus "$WIN" \
-    windowsize  "$WIN" 1920 1080 \
-    windowmove  "$WIN" 0 0
-fi
 
 wait $CHROME_PID
