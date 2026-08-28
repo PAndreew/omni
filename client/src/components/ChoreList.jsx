@@ -115,7 +115,7 @@ export default function ChoreList({ focused }) {
         onClose={() => setShowKeyboard(false)}
       />
       <div className="chore-header tile-header">
-        <p className="title">Chores <span style={{ color: 'var(--silver-light)', fontVariantNumeric: 'tabular-nums' }}>{pending.length}</span></p>
+        <p className="title">Todos <span style={{ color: 'var(--silver-light)', fontVariantNumeric: 'tabular-nums' }}>{pending.length}</span></p>
         {debug && <span className="chore-status">{debug}</span>}
       </div>
 

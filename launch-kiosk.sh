@@ -6,8 +6,8 @@ export XAUTHORITY=/home/pi/.Xauthority
 export WAYLAND_DISPLAY=wayland-1
 export XDG_RUNTIME_DIR=/run/user/1000
 
-# Keep DSI-2 and the Raspberry Pi desktop/panel running. HDMI-A-1 is the
-# compositor's logical origin, so Chromium's kiosk opens on the TV.
+# The Raspberry Pi DSI touchscreen is 800x480 at X coordinate 1920.
+# Keep the desktop and HDMI output running, but place OmniWall on DSI-2.
 
 # Wait for OmniWall server (up to 30s)
 for i in $(seq 1 30); do
@@ -20,12 +20,20 @@ done
 KIOSK_PROFILE=/tmp/chromium-kiosk
 mkdir -p "$KIOSK_PROFILE"
 
-# Launch Chromium in kiosk mode on the logical-origin TV output.
+# Make DSI-2 Wayfire's active output before Chromium creates its window.
+# Wayfire otherwise places new windows on the HDMI display regardless of
+# Chromium's requested X coordinate.
+xdotool mousemove 2320 240 click 1 2>/dev/null || true
+sleep 0.5
+
+# Launch Chromium full-screen on the DSI touchscreen.
 chromium-browser \
   --ozone-platform=x11 \
-  --kiosk \
-  --window-position=0,0 \
-  --window-size=1920,1080 \
+  --window-position=1920,0 \
+  --window-size=800,480 \
+  --touch-events=enabled \
+  --enable-low-end-device-mode \
+  --renderer-process-limit=3 \
   --background-color=000000 \
   --noerrdialogs \
   --disable-infobars \
@@ -45,5 +53,18 @@ chromium-browser \
   --app=http://localhost:3001 &
 
 CHROME_PID=$!
+
+# Wayfire/XWayland can ignore Chromium's initial geometry. Place the app on
+# DSI-2 first, then enter browser fullscreen on that output.
+for i in $(seq 1 20); do
+  WIN=$(xdotool search --name '^OmniWall$' 2>/dev/null | tail -1)
+  if [ -n "$WIN" ]; then
+    xdotool windowmove "$WIN" 1920 0 2>/dev/null || true
+    xdotool windowsize "$WIN" 800 480 2>/dev/null || true
+    xdotool windowactivate "$WIN" key F11 2>/dev/null || true
+    break
+  fi
+  sleep 0.5
+done
 
 wait $CHROME_PID

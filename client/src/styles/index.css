@@ -219,3 +219,197 @@ html, body, #root {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
 }
+
+/* ─── Raspberry Pi touchscreen carousel ─────────────────────────── */
+.carousel-shell {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--void);
+  user-select: none;
+}
+
+.carousel-viewport {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+
+.carousel-track {
+  display: flex;
+  height: 100%;
+  transition: transform 420ms cubic-bezier(.22, .75, .24, 1);
+  will-change: transform;
+}
+
+.carousel-slide {
+  flex: 0 0 calc(100% / var(--slide-count));
+  width: calc(100% / var(--slide-count));
+  height: 100%;
+  padding: 48px 58px 34px;
+  overflow: hidden;
+}
+
+.carousel-slide > .tile {
+  width: 100%;
+  height: 100%;
+  padding: 18px 24px;
+  border: 0;
+  background: transparent;
+}
+
+.carousel-slide > .tile::before { display: none; }
+.carousel-slide .title { margin-bottom: 10px; }
+
+.carousel-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 46px;
+  padding: 0 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0, 0, 0, .86);
+  pointer-events: none;
+  z-index: 20;
+}
+
+.carousel-brand,
+.carousel-section {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .2em;
+  text-transform: uppercase;
+}
+.carousel-brand { color: var(--silver-light); }
+.carousel-section { color: var(--text-dim); }
+
+.carousel-arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 30;
+  width: 52px;
+  height: 84px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: rgba(0, 0, 0, .34);
+  color: var(--text-dim);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.carousel-arrow:active { color: #fff; background: rgba(255, 255, 255, .08); }
+.carousel-arrow--left { left: 0; }
+.carousel-arrow--right { right: 0; }
+
+.carousel-dots {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  z-index: 30;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.carousel-dot {
+  width: 28px;
+  height: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.carousel-dot::after {
+  content: '';
+  display: block;
+  width: 100%;
+  height: 3px;
+  background: #303030;
+  transition: background .2s ease;
+}
+.carousel-dot.active::after { background: var(--silver-light); }
+
+/* Time gets a deliberately quiet, glanceable screen. */
+.carousel-slide--time .clock-tile {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.carousel-slide--time .title { display: none; }
+.carousel-slide--time .clock-time { gap: 10px; }
+.carousel-slide--time .clock-hm {
+  font-size: clamp(112px, 23vw, 184px);
+  letter-spacing: -8px;
+}
+.carousel-slide--time .clock-seconds {
+  font-size: 28px;
+  margin-bottom: 18px;
+}
+.carousel-slide--time .clock-date {
+  margin-top: 18px;
+  font-size: 15px;
+  letter-spacing: .22em;
+}
+
+/* Fit complete, readable panels into the 800×480 DSI display. */
+.carousel-slide--weather .weather-tile { gap: 10px; justify-content: center; }
+.carousel-slide--weather .weather-main { gap: 18px; }
+.carousel-slide--weather .weather-temp { font-size: 64px; }
+.carousel-slide--weather .weather-label { font-size: 15px; }
+.carousel-slide--weather .weather-meta { font-size: 12px; }
+.carousel-slide--weather .forecast-day { padding: 8px 6px; }
+
+.carousel-slide--todos .chore-tile { gap: 8px; }
+.carousel-slide--todos .chore-list { gap: 5px; }
+.carousel-slide--todos .chore-item { min-height: 48px; padding: 8px 12px; }
+.carousel-slide--todos .chore-check { width: 24px; height: 24px; }
+.carousel-slide--todos .chore-delete { opacity: .55; min-width: 38px; min-height: 38px; }
+.carousel-slide--todos .chore-add { padding-top: 8px; }
+.carousel-slide--todos .chore-add .input,
+.carousel-slide--todos .chore-add .btn { min-height: 42px; }
+
+.carousel-slide--news .rss-list { gap: 8px; }
+.carousel-slide--news .rss-item { padding: 9px 12px; }
+.carousel-slide--news .rss-item-title { font-size: 15px; }
+.carousel-slide--news .rss-icon-btn { min-width: 38px; min-height: 38px; justify-content: center; }
+.carousel-slide--news .details-btn { min-height: 32px; padding: 5px 10px; }
+
+.carousel-slide--calendar .cal-tile.cal-tile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  grid-template-rows: 40px minmax(0, 1fr);
+  column-gap: 18px;
+  row-gap: 4px;
+}
+.carousel-slide--calendar .cal-header { grid-column: 1 / -1; }
+.carousel-slide--calendar .cal-header .btn { min-width: 40px; min-height: 34px; }
+.carousel-slide--calendar .cal-grid {
+  grid-column: 1;
+  grid-row: 2;
+  height: 100%;
+}
+.carousel-slide--calendar .cal-day {
+  aspect-ratio: auto;
+  min-height: 38px;
+  font-size: 14px;
+}
+.carousel-slide--calendar .cal-today-events {
+  grid-column: 2;
+  grid-row: 2;
+  padding-left: 16px;
+  border-left: 1px solid var(--border);
+}
+.carousel-slide--calendar .cal-event { padding: 9px 8px; }
+
+@media (max-height: 500px) {
+  html, body, #root { height: 100%; overflow: hidden; }
+}
