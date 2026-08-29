@@ -23,7 +23,10 @@ server/*.db
 .DS_Store
 Thumbs.db
 
-# Secrets
+# Secrets and local recovery copies
 .env
 .env.*
 !.env.example
+server/gcp-tts-key.json
+**/*.bak
+**/*.before-*

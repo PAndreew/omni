@@ -46,6 +46,16 @@ app.use((req, res, next) => {
 // Attach io to every request so routes can emit events
 app.use((req, _res, next) => { req.io = io; next(); });
 
+// Deployment health check: verifies the process and persistent database.
+app.get('/api/health', (_req, res) => {
+  try {
+    db.prepare('SELECT 1').get();
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(503).json({ ok: false, error: error.message });
+  }
+});
+
 // API routes
 app.use('/api/chores',    choresRouter);
 app.use('/api/weather',   weatherRouter);

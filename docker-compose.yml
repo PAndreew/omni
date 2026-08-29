@@ -40,11 +40,11 @@ services:
     #   - /tmp/.X11-unix:/tmp/.X11-unix:ro           # X11 (optional)
 
     healthcheck:
-      test: ["CMD-SHELL", "bun -e \"fetch('http://localhost:3001/api/weather').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
 
     logging:
       driver: json-file

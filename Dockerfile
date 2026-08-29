@@ -2,45 +2,43 @@
 FROM oven/bun:1-slim AS client-builder
 
 WORKDIR /build/client
-
-# Cache dependency install separately from source
-COPY client/package.json bun.lockb* ./
-RUN bun install --frozen-lockfile 2>/dev/null || bun install
-
+COPY client/package.json ./
+RUN bun install
 COPY client/ ./
 RUN bun run build
 
 
-# ─── Stage 2: Production server ──────────────────────────────────────────────
-FROM oven/bun:1-slim AS final
+# ─── Stage 2: Compile native server dependencies for ARM64 ─────────────────
+FROM node:22-bookworm-slim AS server-deps
 
-# Install cec-utils and playerctl for CEC + audio metadata (optional, gracefully skipped if missing)
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends python3 make g++ && \
+    rm -rf /var/lib/apt/lists/*
+WORKDIR /build/server
+COPY server/package.json ./
+RUN npm install --omit=dev
+
+
+# ─── Stage 3: Small production runtime ─────────────────────────────────────
+FROM node:22-bookworm-slim AS final
+
 RUN apt-get update -qq && \
     apt-get install -y --no-install-recommends cec-utils playerctl && \
-    rm -rf /var/lib/apt/lists/* || true
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app/server
-
-# Cache server deps
-COPY server/package.json bun.lockb* ./
-RUN bun install --frozen-lockfile 2>/dev/null || bun install
-
-# Copy server source
+COPY --from=server-deps /build/server/node_modules ./node_modules
 COPY server/ ./
-
-# Copy built frontend into expected location (served as static files)
 COPY --from=client-builder /build/client/dist /app/client/dist
 
-# Persistent volume for SQLite database
 VOLUME ["/app/server/data"]
-
 EXPOSE 3001
 
 ENV NODE_ENV=production \
     PORT=3001 \
     DB_PATH=/app/server/data/omniwall.db
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD bun -e "fetch('http://localhost:3001/api/weather').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=6 \
+  CMD node -e "fetch('http://localhost:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["bun", "index.js"]
+CMD ["node", "index.js"]

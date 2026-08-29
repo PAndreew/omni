@@ -18,7 +18,11 @@ const AUTOPLAY_MS = 30_000;
 const SWIPE_THRESHOLD = 55;
 
 export default function App() {
-  const [active, setActive] = useState(0);
+  const [active, setActive] = useState(() => {
+    const requestedSlide = new URLSearchParams(window.location.search).get('slide');
+    const requestedIndex = SLIDES.findIndex((slide) => slide.id === requestedSlide);
+    return requestedIndex >= 0 ? requestedIndex : 0;
+  });
   const [paused, setPaused] = useState(false);
   const pointerStart = useRef(null);
   const pauseTimer = useRef(null);
@@ -94,7 +98,7 @@ export default function App() {
               aria-label={label}
               aria-hidden={index !== active}
             >
-              <Component focused={false} />
+              <Component focused={index === active} />
             </section>
           ))}
         </div>

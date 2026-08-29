@@ -73,17 +73,16 @@ try { db.exec("ALTER TABLE events ADD COLUMN uid TEXT"); }      catch {}
 try { db.exec("ALTER TABLE events ADD COLUMN all_day INTEGER DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE events ADD COLUMN owner TEXT DEFAULT ''"); }     catch {}
 
-// Seed default RSS feed if table is empty (also picks up any old rss_url setting)
+// Remove the old NYT default and retain the curated, constructive tech feeds.
 try {
-  const count = db.prepare('SELECT COUNT(*) as n FROM rss_feeds').get().n;
-  if (count === 0) {
-    const oldUrl = db.prepare("SELECT value FROM settings WHERE key = 'rss_url'").get()?.value;
-    const url = oldUrl || 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml';
-    const name = (oldUrl && oldUrl !== 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml')
-      ? 'News'
-      : 'World News (NYT)';
-    db.prepare('INSERT OR IGNORE INTO rss_feeds (name, url) VALUES (?, ?)').run(name, url);
-  }
+  db.prepare("DELETE FROM rss_feeds WHERE lower(name) LIKE '%nyt%' OR lower(url) LIKE '%nytimes.com%'").run();
+  const insertFeed = db.prepare('INSERT OR IGNORE INTO rss_feeds (name, url) VALUES (?, ?)');
+  for (const [name, url] of [
+    ['Nautilus', 'https://nautil.us/feed/'],
+    ['TechCrunch', 'https://techcrunch.com/feed/'],
+    ['Hacker News', 'https://hnrss.org/newest'],
+    ['Techmeme', 'https://www.techmeme.com/feed.xml'],
+  ]) insertFeed.run(name, url);
 } catch {}
 
 const defaults = {
@@ -94,7 +93,7 @@ const defaults = {
   tts_voice:      '',
   tts_rate:       '1',
   tts_pitch:      '1',
-  rss_url:        'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',
+  rss_url:        'https://nautil.us/feed/',
   rss_refresh:    '15',
 };
 

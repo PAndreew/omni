@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSocket } from '../hooks/useSocket.js';
 import CecKeyboard from './CecKeyboard.jsx';
 
@@ -10,6 +10,8 @@ export default function ChoreList({ focused }) {
   const [pulsingId, setPulsingId] = useState(null);
   const [debug, setDebug] = useState('');
   const [showKeyboard, setShowKeyboard] = useState(false);
+  const listRef = useRef(null);
+  const manualScrollUntil = useRef(0);
 
   const loadChores = useCallback(() => {
     fetch('/api/chores')
@@ -102,6 +104,24 @@ export default function ChoreList({ focused }) {
     });
   };
 
+  useEffect(() => {
+    const list = listRef.current;
+    if (!focused || !list) return undefined;
+
+    list.scrollTop = 0;
+    const timer = window.setInterval(() => {
+      if (Date.now() < manualScrollUntil.current) return;
+      const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 1;
+      if (!atBottom) list.scrollTop += 1;
+    }, 45);
+
+    return () => window.clearInterval(timer);
+  }, [focused, chores.length]);
+
+  const pauseAutoScroll = () => {
+    manualScrollUntil.current = Date.now() + 15_000;
+  };
+
   const sorted = sortChores(chores);
   const pending = sorted.filter(c => !c.done);
   const done = sorted.filter(c => c.done);
@@ -119,7 +139,7 @@ export default function ChoreList({ focused }) {
         {debug && <span className="chore-status">{debug}</span>}
       </div>
 
-      <div className="chore-list">
+      <div className="chore-list" ref={listRef} onPointerDown={pauseAutoScroll} onWheel={pauseAutoScroll}>
         {pending.map(c => (
           <ChoreItem key={c.id} chore={c} onToggle={toggle} onDelete={deleteChore} pulsing={pulsingId === c.id} />
         ))}

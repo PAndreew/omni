@@ -62,11 +62,12 @@ router.get('/', async (req, res) => {
       humidity: current.relativehumidity_2m,
       wind: Math.round(current.windspeed_10m),
       condition: WMO_CODES[current.weathercode] || { label: 'Unknown', icon: '🌡️' },
-      forecast: daily.time.slice(1, 4).map((date, i) => ({
+      forecast: daily.time.slice(0, 3).map((date, i) => ({
         date,
-        high: Math.round(daily.temperature_2m_max[i + 1]),
-        low: Math.round(daily.temperature_2m_min[i + 1]),
-        condition: WMO_CODES[daily.weathercode[i + 1]] || { label: 'Unknown', icon: '🌡️' },
+        high: Math.round(daily.temperature_2m_max[i]),
+        low: Math.round(daily.temperature_2m_min[i]),
+        current: i === 0 ? Math.round(current.temperature_2m) : null,
+        condition: WMO_CODES[daily.weathercode[i]] || { label: 'Unknown', icon: 'cloud' },
       })),
     };
 

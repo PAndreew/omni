@@ -1,98 +1,118 @@
 import express from 'express';
-import db from '../db.js';
 
 const router = express.Router();
 
-// ── XML helpers ────────────────────────────────────────────────────────────────
-// Extract text from a simple XML tag, handles CDATA and plain text.
+const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+const CACHE_MS = 10 * 60 * 1000;
+const FEEDS = [
+  { name: 'Nautilus', url: 'https://nautil.us/feed/' },
+  { name: 'TechCrunch', url: 'https://techcrunch.com/feed/' },
+  { name: 'Hacker News', url: 'https://hnrss.org/newest' },
+  { name: 'Techmeme', url: 'https://www.techmeme.com/feed.xml' },
+];
+
+let cache = null;
+let cacheTime = 0;
+
 function getTag(block, tag) {
-  const re = new RegExp(
+  const expression = new RegExp(
     `<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>` +
     `|<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`,
-    'i'
+    'i',
   );
-  const m = re.exec(block);
-  return m ? (m[1] ?? m[2] ?? '').trim() : '';
+  const match = expression.exec(block);
+  return match ? (match[1] ?? match[2] ?? '').trim() : '';
+}
+
+function decodeText(value) {
+  return value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([\da-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;|&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function parseRss(xml, feedName) {
   const items = [];
-  const re = /<item>([\s\S]*?)<\/item>/g;
-  let m;
-  while ((m = re.exec(xml)) !== null) {
-    const b = m[1];
-    const pubDate = getTag(b, 'pubDate');
+  const itemExpression = /<item(?:\s[^>]*)?>([\s\S]*?)<\/item>/gi;
+  let match;
+
+  while ((match = itemExpression.exec(xml)) !== null) {
+    const block = match[1];
+    const pubDate = getTag(block, 'pubDate') || getTag(block, 'dc:date');
+    const pubTs = Date.parse(pubDate);
+    const title = decodeText(getTag(block, 'title'));
+    if (!title || !Number.isFinite(pubTs)) continue;
+
     items.push({
       feedName,
-      title:       getTag(b, 'title'),
-      link:        getTag(b, 'link'),
-      description: getTag(b, 'description') || getTag(b, 'encoded'),
+      title,
+      link: decodeText(getTag(block, 'link')),
       pubDate,
-      pubTs: pubDate ? new Date(pubDate).getTime() : 0,
+      pubTs,
     });
   }
+
   return items;
 }
 
-// ── Feed CRUD ──────────────────────────────────────────────────────────────────
-
-// List all feeds
-router.get('/feeds', (req, res) => {
-  const feeds = db.prepare('SELECT * FROM rss_feeds ORDER BY added_at DESC').all();
-  res.json(feeds);
-});
-
-// Add a feed
-router.post('/feeds', (req, res) => {
-  const { name, url } = req.body ?? {};
-  if (!name?.trim() || !url?.trim())
-    return res.status(400).json({ error: 'name and url required' });
-  try {
-    const r = db.prepare('INSERT INTO rss_feeds (name, url) VALUES (?, ?)').run(name.trim(), url.trim());
-    res.json({ id: r.lastInsertRowid, name: name.trim(), url: url.trim(), enabled: 1 });
-  } catch {
-    res.status(409).json({ error: 'Feed URL already exists' });
+function shuffled(items) {
+  const result = [...items];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
   }
-});
+  return result;
+}
 
-// Toggle enabled
-router.patch('/feeds/:id', (req, res) => {
-  const { enabled } = req.body ?? {};
-  db.prepare('UPDATE rss_feeds SET enabled = ? WHERE id = ?').run(enabled ? 1 : 0, req.params.id);
-  res.json({ ok: true });
-});
+function chooseTwo(groups) {
+  const availableGroups = shuffled(groups.filter((group) => group.items.length > 0));
+  const selected = availableGroups.slice(0, 2).map((group) => shuffled(group.items)[0]);
 
-// Delete a feed
-router.delete('/feeds/:id', (req, res) => {
-  db.prepare('DELETE FROM rss_feeds WHERE id = ?').run(req.params.id);
-  res.json({ ok: true });
-});
+  if (selected.length < 2 && availableGroups[0]) {
+    const unused = shuffled(availableGroups[0].items.filter((item) => item.link !== selected[0]?.link));
+    if (unused[0]) selected.push(unused[0]);
+  }
 
-// ── Aggregated feed ────────────────────────────────────────────────────────────
-// Fetches all enabled feeds in parallel, parses XML server-side, returns JSON.
-router.get('/', async (req, res) => {
+  return selected.slice(0, 2);
+}
+
+router.get('/feeds', (_req, res) => res.json(FEEDS));
+
+router.get('/', async (_req, res) => {
   try {
-    const feeds = db.prepare('SELECT * FROM rss_feeds WHERE enabled = 1').all();
-    if (!feeds.length) return res.json([]);
+    const now = Date.now();
+    if (cache && now - cacheTime < CACHE_MS) return res.json(cache);
 
-    const results = await Promise.allSettled(
-      feeds.map(f =>
-        fetch(f.url, { signal: AbortSignal.timeout(8000) })
-          .then(r => r.text())
-          .then(xml => parseRss(xml, f.name))
-      )
-    );
+    const results = await Promise.allSettled(FEEDS.map(async (feed) => {
+      const response = await fetch(feed.url, {
+        signal: AbortSignal.timeout(8000),
+        headers: { 'user-agent': 'OmniWall/1.0 RSS reader' },
+      });
+      if (!response.ok) throw new Error(`${feed.name}: HTTP ${response.status}`);
+      return { ...feed, items: parseRss(await response.text(), feed.name) };
+    }));
 
-    const items = results
-      .filter(r => r.status === 'fulfilled')
-      .flatMap(r => r.value)
-      .sort((a, b) => b.pubTs - a.pubTs)   // newest first
-      .slice(0, 60);                         // cap at 60 items
+    const cutoff = now - FOUR_HOURS_MS;
+    const groups = results
+      .filter((result) => result.status === 'fulfilled')
+      .map((result) => ({
+        name: result.value.name,
+        items: result.value.items.filter((item) => item.pubTs >= cutoff && item.pubTs <= now + 5 * 60 * 1000),
+      }));
 
-    res.json(items);
-  } catch (err) {
-    console.error('[RSS] fetch error:', err);
-    res.status(500).json({ error: 'Failed to fetch feeds' });
+    cache = chooseTwo(groups);
+    cacheTime = now;
+    res.json(cache);
+  } catch (error) {
+    console.error('[RSS] fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch headlines' });
   }
 });
 
