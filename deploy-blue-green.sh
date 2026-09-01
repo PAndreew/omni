@@ -99,7 +99,11 @@ WantedBy=default.target
 EOF
 
 # Once containerized, the kiosk must depend on the stable proxy rather than
-# restarting the retired bare-metal server.
+# restarting the retired bare-metal server. Update existing locally-installed
+# units as systemd cannot reliably subtract a Wants= dependency in a drop-in.
+if [[ -f "$UNIT_DIR/omniwall-kiosk.service" ]]; then
+  sed -i 's/omniwall-server\.service/omniwall-proxy.service/g' "$UNIT_DIR/omniwall-kiosk.service"
+fi
 cat > "$KIOSK_OVERRIDE_DIR/blue-green.conf" <<EOF
 [Unit]
 Wants=

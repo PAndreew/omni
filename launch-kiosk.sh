@@ -31,7 +31,6 @@ chromium-browser \
   --ozone-platform=x11 \
   --window-position=1920,0 \
   --window-size=800,480 \
-  --touch-events=enabled \
   --enable-low-end-device-mode \
   --renderer-process-limit=3 \
   --background-color=000000 \
