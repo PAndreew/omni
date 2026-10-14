@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Card } from './ui/card.jsx';
 import {
   Sun, CloudSun, Cloud, Cloudy, CloudFog,
   CloudDrizzle, CloudRain, CloudSnow, CloudLightning, CloudHail,
@@ -40,17 +41,17 @@ export default function Weather({ focused }) {
     return () => clearInterval(timer);
   }, []);
 
-  if (error) return <div className="tile weather-state">Weather unavailable</div>;
-  if (!weather) return <div className="tile weather-state">Loading weather…</div>;
+  if (error) return <Card className="tile weather-state">Weather unavailable</Card>;
+  if (!weather) return <Card className="tile weather-state">Loading weather…</Card>;
 
   return (
-    <div className={`tile weather-tile ${focused ? 'focused' : ''}`}>
-      <p className="title">{weather.city} · Three day forecast</p>
+    <Card className={`tile weather-tile ${focused ? 'focused' : ''}`}>
+      <p className="title">{weather.city} · Weather</p>
       <div className="forecast-columns">
-        {weather.forecast.slice(0, 3).map((day, index) => (
+        {weather.forecast.slice(0, 2).map((day, index) => (
           <article key={day.date} className={`forecast-card ${index === 0 ? 'today' : ''}`}>
             <p className="forecast-day-name">
-              {index === 0 ? 'Today' : index === 1 ? 'Tomorrow' : new Date(`${day.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long' })}
+              {index === 0 ? 'Today' : 'Tomorrow'}
             </p>
             <WeatherIcon code={day.condition?.icon} />
             <p className="forecast-temperature">{day.current ?? day.high}°</p>
@@ -59,6 +60,6 @@ export default function Weather({ focused }) {
           </article>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }

@@ -1,0 +1,26 @@
+.gizi { position: relative; z-index: 900; font-size: 14px; }
+.gizi button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 10px 15px; border: 1px solid #666; background: #151515; color: var(--text); font: inherit; cursor: pointer; border-radius: 12px; }
+.gizi button:focus-visible, .gizi input:focus-visible { outline: 2px solid #a5dfba; outline-offset: 3px; }
+.gizi button:disabled { opacity: .45; cursor: not-allowed; }
+.gizi .gizi-launcher { display: flex; width: 44px; height: 44px; min-height: 44px; padding: 10px; border: 0; background: transparent; color: var(--silver-light); }
+.gizi .gizi-launcher:hover { color: #fff; background: var(--surface-2); }
+.gizi .gizi-launcher { position: relative; }
+.gizi .has-wake::after { content: ''; position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+.gizi .is-listening { border-color: #ff6969; background: #3e1515; }
+.gizi-panel { position: fixed; left: calc(var(--nav-width) + 12px); bottom: 16px; width: min(370px, calc(100vw - var(--nav-width) - 24px)); max-height: calc(100dvh - 32px); overflow-y: auto; background: #101010; border: 0; border-radius: 0; padding: 18px; box-shadow: 0 10px 40px #000c; }
+.gizi-panel header { display: flex; align-items: center; justify-content: space-between; font-size: 20px; }
+.gizi-panel header button { border: 0; padding: 8px; }
+.gizi-privacy, .gizi-panel small { display: block; color: var(--text-dim); line-height: 1.5; font-size: 12px; margin: 12px 0; }
+.gizi-panel label { display: block; font-size: 12px; color: #bbb; }
+.gizi-panel input { display: block; width: 100%; min-height: 44px; margin-top: 6px; padding: 10px; background: #080808; border: 1px solid #555; border-radius: 8px; color: white; font-size: 16px; }
+.gizi-status { display: flex; gap: 8px; align-items: center; margin: 16px 0; }
+.gizi-dot { height: 8px; width: 8px; border-radius: 50%; background: #888; flex-shrink: 0; }
+.gizi-dot.live { background: #ff6969; box-shadow: 0 0 8px #ff696966; }
+.gizi-error { color: #ffaaaa; line-height: 1.4; margin-bottom: 12px; }
+.gizi-transcript { line-height: 1.5; margin: 10px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.gizi-actions { display: flex; gap: 10px; }
+.gizi .gizi-primary { flex: 1; border-color: #92bea1; color: #d6f7e0; }
+.gizi button, .gizi-panel, .gizi-panel input { border-radius: 0; }
+.gizi button:focus-visible, .gizi input:focus-visible { outline-color: #c0c0c0; }
+.gizi .gizi-primary { border-color: var(--border); color: var(--text); }
+@media (max-width: 768px) { .dashboard { padding-bottom: 0; } }

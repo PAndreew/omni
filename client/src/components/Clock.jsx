@@ -1,12 +1,24 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
+import { Card } from './ui/card.jsx';
 
 export default function Clock({ focused }) {
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
+    const tick = () => {
+      window.__omniClockHeartbeat = Date.now();
+      setNow(new Date());
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    window.addEventListener('pageshow', tick);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('pageshow', tick);
+      document.removeEventListener('visibilitychange', tick);
+    };
   }, []);
 
   const hours   = format(now, 'HH');
@@ -15,7 +27,7 @@ export default function Clock({ focused }) {
   const dateStr = format(now, 'EEEE, MMMM d');
 
   return (
-    <div className={`tile clock-tile ${focused ? 'focused' : ''}`}>
+    <Card className={`tile clock-tile ${focused ? 'focused' : ''}`}>
       <p className="title">Clock</p>
       <div className="clock-time">
         <span className="clock-hm">{hours}<span className="clock-colon">:</span>{minutes}</span>
@@ -25,12 +37,10 @@ export default function Clock({ focused }) {
       <style>{`
         .clock-tile { display: flex; flex-direction: column; justify-content: flex-start; }
         .clock-time  { display: flex; align-items: baseline; gap: 4px; }
-        .clock-hm    { font-family: 'Satoshi', sans-serif; font-size: clamp(36px, 6vw, 88px);
-                       font-weight: 300; letter-spacing: -3px; line-height: 1;
-                       background: linear-gradient(135deg, #c8c8c8 50%, #606060);
-                       -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .clock-hm    { font-family: inherit; font-size: clamp(36px, 6vw, 88px);
+                       font-weight: 700; letter-spacing: -3px; line-height: 1; color: var(--text); }
         .clock-colon { animation: blink 1s step-start infinite; }
-        .clock-seconds { font-family: 'Satoshi', sans-serif; font-size: clamp(14px, 2vw, 26px);
+        .clock-seconds { font-family: inherit; font-size: clamp(14px, 2vw, 26px);
                          font-weight: 300; color: var(--text-dim); align-self: flex-end;
                          margin-bottom: 8px; }
         .clock-date { font-size: 11px; font-weight: 400; letter-spacing: 0.16em;
@@ -41,6 +51,6 @@ export default function Clock({ focused }) {
           .clock-date { font-size: 11px; }
         }
       `}</style>
-    </div>
+    </Card>
   );
 }

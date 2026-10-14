@@ -1,7 +1,10 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.jsx';
-import './styles/index.css';
+import './styles/shadcn.css';
+import './styles/dashboard-theme.css';
+
+document.documentElement.classList.add('dark');
 
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
