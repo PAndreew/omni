@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { addDays, addWeeks, format, isSameDay, parseISO, startOfWeek } from 'date-fns';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { addDays, format, isSameDay, parseISO, startOfWeek } from 'date-fns';
 import { useSocket } from '../hooks/useSocket.js';
 import { Card } from './ui/card.jsx';
-import { Button } from './ui/button.jsx';
 
 const dateKey = date => format(date, 'yyyy-MM-dd');
 function eventTime(event) {
@@ -16,7 +14,6 @@ export default function CalendarWidget({ focused }) {
   const [events, setEvents] = useState([]);
   const [chores, setChores] = useState([]);
   const [now, setNow] = useState(new Date());
-  const [weekOffset, setWeekOffset] = useState(0);
   const loadAgenda = useCallback(() => {
     Promise.all([
       fetch('/api/events').then(response => response.json()),
@@ -38,7 +35,7 @@ export default function CalendarWidget({ focused }) {
   useSocket('chore:updated', loadAgenda);
   useSocket('chore:deleted', loadAgenda);
 
-  const weekStart = startOfWeek(addWeeks(now, weekOffset), { weekStartsOn: 1 });
+  const weekStart = startOfWeek(now, { weekStartsOn: 1 });
   const days = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
   const key = dateKey(now);
   const dayEvents = events.filter(event => event.start_time.slice(0, 10) === key)
@@ -46,14 +43,9 @@ export default function CalendarWidget({ focused }) {
   const dayChores = chores.filter(chore => !chore.done && (chore.due_date === key || !chore.due_date));
 
   return <Card className={`tile agenda-tile ${focused ? 'focused' : ''}`}>
-    <h2 className="title">Calendar</h2>
-    <header className="week-heading">
-      <h3>{format(weekStart, 'MMMM yyyy')}</h3>
-      <div className="week-navigation">
-        <Button variant="ghost" size="icon" type="button" aria-label="Previous week" onClick={() => setWeekOffset(value => value - 1)}><ChevronLeft size={20} /></Button>
-        <Button variant="ghost" type="button" aria-label="Return to current week" onClick={() => setWeekOffset(0)}>{format(weekStart, 'MMM d')} – {format(days[6], 'MMM d')}</Button>
-        <Button variant="ghost" size="icon" type="button" aria-label="Next week" onClick={() => setWeekOffset(value => value + 1)}><ChevronRight size={20} /></Button>
-      </div>
+    <header className="calendar-heading">
+      <h2 className="title">Calendar</h2>
+      <span className="title">{format(now, 'MMMM yyyy')}</span>
     </header>
     <div className="week-grid" aria-label="Weekly calendar">
       {days.map(day => {
