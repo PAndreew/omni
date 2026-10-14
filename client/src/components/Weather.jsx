@@ -27,26 +27,45 @@ export default function Weather({ focused }) {
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    const load = () => fetch('/api/weather')
-      .then((response) => response.json())
-      .then((data) => {
-        if (data?.error || !Array.isArray(data?.forecast)) throw new Error('Unavailable');
-        setWeather(data);
-        setError(false);
-      })
-      .catch(() => setError(true));
+    let disposed = false;
+    let timer;
+    let controller;
+    const load = async () => {
+      controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10_000);
+      let delay = 30_000;
+      try {
+        const response = await fetch('/api/weather', { signal: controller.signal });
+        if (!response.ok) throw new Error('Unavailable');
+        const data = await response.json();
+        if (data?.error || !Array.isArray(data?.forecast) || data.forecast.length < 2) throw new Error('Unavailable');
+        if (!disposed) {
+          setWeather(data);
+          setError(false);
+        }
+        delay = 10 * 60 * 1000;
+      } catch {
+        if (!disposed) setError(true);
+      } finally {
+        clearTimeout(timeout);
+        if (!disposed) timer = setTimeout(load, delay);
+      }
+    };
 
-    load();
-    const timer = setInterval(load, 10 * 60 * 1000);
-    return () => clearInterval(timer);
+    void load();
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+      controller?.abort();
+    };
   }, []);
 
-  if (error) return <Card className="tile weather-state">Weather unavailable</Card>;
+  if (error && !weather) return <Card className="tile weather-state" role="status">Weather unavailable · Retrying…</Card>;
   if (!weather) return <Card className="tile weather-state">Loading weather…</Card>;
 
   return (
     <Card className={`tile weather-tile ${focused ? 'focused' : ''}`}>
-      <p className="title">{weather.city} · Weather</p>
+      <p className="title">{weather.city} · Weather{error && <span role="status"> · Last forecast · Retrying…</span>}</p>
       <div className="forecast-columns">
         {weather.forecast.slice(0, 2).map((day, index) => (
           <article key={day.date} className={`forecast-card ${index === 0 ? 'today' : ''}`}>
