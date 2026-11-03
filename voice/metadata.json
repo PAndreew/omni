@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "kind": "track",
+      "spotifyId": "4wJ5Qq0jBN4ajy7ouZIV1c",
+      "title": "APT.",
+      "artists": ["ROSÉ", "Bruno Mars"],
+      "aliases": ["apacépacé", "apacé pacé", "apacé apacé"],
+      "notes": "Child's imitation of the chorus. Resolve exactly."
+    },
+    {
+      "kind": "track",
+      "spotifyId": "5k7gd1MKXJltmaX5VxiPvN",
+      "title": "4 AM",
+      "artists": ["Scooter"],
+      "aliases": ["sárga fejű bácsi", "sárga fejű bácsit", "sarga feju bacsi"],
+      "notes": "Family nickname. Resolve exactly."
+    },
+    {
+      "kind": "track",
+      "spotifyId": "4255amV4enzl28KAn16rUO",
+      "title": "Are You With Me",
+      "artists": ["Lost Frequencies"],
+      "aliases": ["órás", "órást"],
+      "notes": "Family nickname for the song. Resolve exactly; do not search Spotify for the alias."
+    },
+    {
+      "kind": "track",
+      "spotifyId": "4kpWVGdFjBSoCkIcHVlTqn",
+      "title": "Prophecy of Ragnarök",
+      "artists": ["Brothers of Metal"],
+      "aliases": ["piros villámló bácsi", "piros villámló bácsit"],
+      "notes": "Family nickname for the song. Resolve exactly; do not search Spotify for the alias."
+    },
+    {
+      "kind": "playlist",
+      "spotifyId": "24zkMDCr0Km6Qc47GYZvhn",
+      "title": "csajok",
+      "artists": [],
+      "aliases": ["csajok"],
+      "notes": "Approved private family playlist."
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@omni/pi-spotify-household",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "keywords": ["pi-package"],
+  "exports": {
+    ".": "./src/index.js",
+    "./spotify": "./src/spotify.js",
+    "./metadata": "./src/metadata.js"
+  },
+  "pi": {
+    "extensions": ["./extensions/spotify-household.js"],
+    "skills": ["./skills/spotify-household"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}

@@ -269,7 +269,7 @@ startAudioBridge(io);
 startScheduler(io);
 startCalendarSync(io);
 
-httpServer.listen(PORT, '0.0.0.0', () => {
+httpServer.listen(PORT, process.env.HOST || '0.0.0.0', () => {
   console.log(`\n🖥️  OmniWall server running at http://0.0.0.0:${PORT}`);
   console.log(`   Local network:  http://192.168.0.141:${PORT}`);
   console.log(`   Tailscale IP:   http://100.64.243.93:${PORT}`);

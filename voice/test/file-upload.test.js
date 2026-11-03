@@ -1,0 +1,42 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { once } from 'node:events';
+import { createVoiceServer } from '../server.js';
+
+test('uploads require pairing, safe destinations, safe filenames and never overwrite', async t => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'omni-upload-'));
+  const service = createVoiceServer({ stateDir: home, accessKey: 'test-key', uploadHome: home });
+  service.server.listen(0, '127.0.0.1'); await once(service.server, 'listening');
+  t.after(async () => { service.close(); await fs.rm(home, { recursive: true, force: true }); });
+  const base = `http://127.0.0.1:${service.server.address().port}`;
+  const headers = { Authorization: 'Bearer test-key', Origin: base, 'Content-Type': 'application/octet-stream' };
+  const upload = (folder, name, extra = {}) => fetch(`${base}/gizi/files/upload?${new URLSearchParams({ folder, name })}`, { method: 'POST', headers: { ...headers, ...extra }, body: 'hello pi' });
+  assert.equal((await fetch(`${base}/gizi/files/folders`)).status, 403);
+  const folders = await (await fetch(`${base}/gizi/files/folders`, { headers })).json();
+  assert.ok(folders.folders.includes('Documents/Uploads'));
+  assert.ok(!folders.folders.includes('Documents'));
+  assert.equal((await upload('Downloads', 'hello.txt', { Origin: 'https://evil.example' })).status, 403);
+  assert.equal((await upload('Downloads', 'hello.txt')).status, 201);
+  assert.equal(await fs.readFile(path.join(home, 'Downloads/hello.txt'), 'utf8'), 'hello pi');
+  assert.equal((await upload('Downloads', 'hello.txt')).status, 409);
+  for (const folder of ['/etc', '../Downloads', 'Documents/omni', 'Downloads/../Documents', 'Downloads/.config']) assert.equal((await upload(folder, 'no.txt')).status, 400, folder);
+  for (const name of ['../escape', '.bashrc', 'sub/file', 'bad\\name']) assert.equal((await upload('Downloads', name)).status, 400, name);
+  const outside = path.join(home, 'outside'); await fs.mkdir(outside);
+  await fs.symlink(outside, path.join(home, 'Downloads/link'));
+  assert.equal((await upload('Downloads/link', 'no.txt')).status, 400);
+  await fs.symlink(path.join(outside, 'target'), path.join(home, 'Downloads/symlink.txt'));
+  assert.equal((await upload('Downloads', 'symlink.txt')).status, 409);
+  await fs.mkdir(path.join(home, 'Downloads/project')); await fs.writeFile(path.join(home, 'Downloads/project/package.json'), '{}');
+  assert.equal((await upload('Downloads/project', 'no.txt')).status, 400);
+  const listing = await (await fetch(`${base}/gizi/files/folders?folder=Downloads`, { headers })).json();
+  assert.ok(!listing.folders.some(folder => /link|project/.test(folder)));
+  // A project marker beside the dedicated Uploads root must not hide it;
+  // markers inside the upload root/subfolders still prohibit those folders.
+  await fs.writeFile(path.join(home, 'Documents/go.mod'), 'module example');
+  const created = await fetch(`${base}/gizi/files/folder`, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ folder: 'Documents/Uploads', name: 'From phone' }) });
+  assert.equal(created.status, 201);
+  assert.equal((await upload('Documents/Uploads/From phone', 'notes.txt')).status, 201);
+});

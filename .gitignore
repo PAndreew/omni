@@ -16,6 +16,8 @@ server/models/
 
 # Environment / secrets
 .env
+.env.*
+!.env.example
 .env.local
 .env.*.local
 
@@ -40,3 +42,16 @@ Thumbs.db
 # Bun
 bun.lockb
 libcec-dev*.deb
+
+.venv/
+voice/translator/.venv/
+__pycache__/
+*.pyc
+*.out
+*.bak
+*.before-*
+server/gcp-tts-key.json
+*credentials*.json
+*token*.json
+access-key
+runtime.env
